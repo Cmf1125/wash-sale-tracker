@@ -37,7 +37,8 @@
                     <div class="flex items-center gap-2">
                         <span id="save-status" class="text-xs text-green-600">✓ Saved</span>
                         <button onclick="exportData()" class="text-blue-600 hover:text-blue-800 text-sm">Export Data</button>
-                        <button onclick="importData()" class="text-gray-600 hover:text-gray-800 text-sm">Import Data</button>
+                        <button onclick="importData()" class="text-gray-600 hover:text-gray-800 text-sm">Import JSON</button>
+                        <button onclick="importCSV()" class="text-blue-600 hover:text-blue-800 text-sm">Import CSV</button>
                         <button onclick="clearAllData()" class="text-red-600 hover:text-red-800 text-sm">Clear All</button>
                     </div>
                 </div>
@@ -60,6 +61,9 @@
                 </button>
                 <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
                     Tax Alerts
+                </button>
+                <button onclick="showTab('help')" id="tab-help" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
+                    Import Help
                 </button>
             </nav>
         </div>
@@ -243,9 +247,112 @@
                 </div>
             </div>
         </div>
+
+        <!-- Import Help Tab -->
+        <div id="help-tab" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold mb-6">📊 How to Import Your Trading Data</h2>
+                
+                <div class="space-y-8">
+                    <!-- Charles Schwab -->
+                    <div class="border-l-4 border-blue-500 pl-6">
+                        <h3 class="text-lg font-semibold mb-2">Charles Schwab</h3>
+                        <ol class="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                            <li>Log into your Schwab account</li>
+                            <li>Go to <strong>Accounts → History & Statements</strong></li>
+                            <li>Select <strong>Transactions</strong></li>
+                            <li>Choose your date range (recommend full year)</li>
+                            <li>Click <strong>Export</strong> → <strong>CSV format</strong></li>
+                            <li>Save the file and use <strong>"Import CSV"</strong> button above</li>
+                        </ol>
+                    </div>
+
+                    <!-- Robinhood -->
+                    <div class="border-l-4 border-green-500 pl-6">
+                        <h3 class="text-lg font-semibold mb-2">Robinhood</h3>
+                        <ol class="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                            <li>Open Robinhood app or website</li>
+                            <li>Go to <strong>Account → Statements & History</strong></li>
+                            <li>Select <strong>Account Statements</strong></li>
+                            <li>Download your monthly statements</li>
+                            <li>Or use <strong>Tax Documents</strong> for 1099 data</li>
+                            <li>Export as CSV and import here</li>
+                        </ol>
+                    </div>
+
+                    <!-- E*TRADE -->
+                    <div class="border-l-4 border-purple-500 pl-6">
+                        <h3 class="text-lg font-semibold mb-2">E*TRADE</h3>
+                        <ol class="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                            <li>Log into E*TRADE Power or website</li>
+                            <li>Go to <strong>Accounts → Complete View</strong></li>
+                            <li>Click <strong>Transactions</strong> tab</li>
+                            <li>Set your date range</li>
+                            <li>Click <strong>Export</strong> → <strong>CSV</strong></li>
+                            <li>Import the downloaded file</li>
+                        </ol>
+                    </div>
+
+                    <!-- TD Ameritrade -->
+                    <div class="border-l-4 border-red-500 pl-6">
+                        <h3 class="text-lg font-semibold mb-2">TD Ameritrade / Schwab</h3>
+                        <ol class="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                            <li>Log into thinkorswim or TD website</li>
+                            <li>Go to <strong>My Account → History & Statements</strong></li>
+                            <li>Select <strong>Transactions</strong></li>
+                            <li>Choose <strong>Date Range</strong></li>
+                            <li>Click <strong>Export to CSV</strong></li>
+                            <li>Upload the file using import feature</li>
+                        </ol>
+                    </div>
+
+                    <!-- Fidelity -->
+                    <div class="border-l-4 border-orange-500 pl-6">
+                        <h3 class="text-lg font-semibold mb-2">Fidelity</h3>
+                        <ol class="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                            <li>Log into Fidelity.com</li>
+                            <li>Go to <strong>Accounts → Activity & Orders</strong></li>
+                            <li>Select <strong>History</strong></li>
+                            <li>Filter for <strong>All Transactions</strong></li>
+                            <li>Click <strong>Download</strong> → <strong>Spreadsheet</strong></li>
+                            <li>Save as CSV and import</li>
+                        </ol>
+                    </div>
+
+                    <!-- Generic Instructions -->
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h3 class="text-lg font-semibold mb-3">📋 For Any Broker</h3>
+                        <div class="text-sm text-gray-700 space-y-2">
+                            <p><strong>Required Columns:</strong> Date, Symbol, Buy/Sell, Quantity, Price</p>
+                            <p><strong>Optional Columns:</strong> Fees, Commission, Description</p>
+                            <p><strong>Date Formats:</strong> MM/DD/YYYY, YYYY-MM-DD, or any standard format</p>
+                            <p><strong>Tips:</strong></p>
+                            <ul class="list-disc list-inside ml-4 space-y-1">
+                                <li>Include full year of data for best wash sale detection</li>
+                                <li>Make sure CSV has column headers in first row</li>
+                                <li>Remove any summary rows or extra formatting</li>
+                                <li>Stock transactions only (no options, bonds, etc.)</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Sample CSV -->
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h4 class="font-semibold mb-2">📄 Sample CSV Format:</h4>
+                        <div class="bg-white p-3 rounded border text-xs font-mono">
+                            Date,Action,Symbol,Quantity,Price,Fees<br>
+                            01/15/2024,Buy,AAPL,100,150.00,0.00<br>
+                            01/20/2024,Sell,AAPL,50,145.00,0.00<br>
+                            02/01/2024,Buy,TSLA,25,200.00,1.50
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="wash-sale-engine.js"></script>
+    <script src="csv-parser.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

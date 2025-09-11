@@ -215,6 +215,8 @@ class WashSafeApp {
             this.updateHistoryTable();
         } else if (tabName === 'alerts') {
             this.updateTaxAlerts();
+        } else if (tabName === 'help') {
+            // Help tab is static HTML, no updates needed
         }
     }
 
@@ -456,6 +458,87 @@ function importData() {
                 console.error('Import error:', error);
             }
         };
+        reader.readAsText(file);
+    };
+    
+    input.click();
+}
+
+function importCSV() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        updateSaveStatus('📊 Parsing CSV...');
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const csvText = e.target.result;
+                const result = window.brokerCSVParser.parseCSV(csvText);
+                
+                if (result.transactions.length === 0) {
+                    alert('❌ No valid transactions found in CSV file.\n\nSupported formats:\n• Charles Schwab\n• Robinhood\n• E*TRADE\n• TD Ameritrade\n• Fidelity\n• Interactive Brokers\n• Generic CSV');
+                    updateSaveStatus('✓ Saved');
+                    return;
+                }
+                
+                const message = `Found ${result.transactions.length} transactions from ${result.brokerType}.\n\nThis will ADD to your existing data (not replace).\n\nContinue with import?`;
+                
+                if (confirm(message)) {
+                    let importedCount = 0;
+                    let skippedCount = 0;
+                    
+                    result.transactions.forEach(transaction => {
+                        const validation = window.brokerCSVParser.validateTransaction(transaction);
+                        if (validation.isValid) {
+                            // Check for duplicates (same symbol, date, quantity, price)
+                            const duplicate = window.washSaleEngine.transactions.find(t => 
+                                t.symbol === transaction.symbol &&
+                                t.type === transaction.type &&
+                                t.quantity === transaction.quantity &&
+                                Math.abs(t.price - transaction.price) < 0.01 &&
+                                Math.abs(new Date(t.date) - transaction.date) < 24 * 60 * 60 * 1000 // Same day
+                            );
+                            
+                            if (!duplicate) {
+                                window.washSaleEngine.addTransaction(transaction);
+                                importedCount++;
+                            } else {
+                                skippedCount++;
+                            }
+                        } else {
+                            console.warn('⚠️ Skipping invalid transaction:', validation.errors);
+                            skippedCount++;
+                        }
+                    });
+                    
+                    window.app.updateUI();
+                    updateSaveStatus('✅ CSV Imported');
+                    
+                    let resultMessage = `✅ CSV Import Complete!\n\n`;
+                    resultMessage += `📊 Imported: ${importedCount} transactions\n`;
+                    if (skippedCount > 0) {
+                        resultMessage += `⚠️ Skipped: ${skippedCount} (duplicates or invalid)\n`;
+                    }
+                    resultMessage += `\n🔍 Check Portfolio and History tabs to review your data.`;
+                    
+                    alert(resultMessage);
+                } else {
+                    updateSaveStatus('✓ Saved');
+                }
+                
+            } catch (error) {
+                console.error('CSV Import error:', error);
+                alert(`❌ Error parsing CSV file: ${error.message}\n\nPlease check that your file is a valid CSV from a supported broker.`);
+                updateSaveStatus('✓ Saved');
+            }
+        };
+        
         reader.readAsText(file);
     };
     
