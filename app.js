@@ -299,6 +299,32 @@ class WashSafeApp {
             const typeClass = transaction.type === 'buy' ? 'text-green-600' : 'text-red-600';
             const typeIcon = transaction.type === 'buy' ? '↗' : '↘';
             
+            // Check for wash sale status
+            const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+            let washSaleDisplay = '<span class="text-xs text-gray-500">-</span>';
+            
+            if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                washSaleDisplay = `
+                    <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                        ⚠️ Wash Sale<br>
+                        <span class="text-xs text-red-600">-$${washSaleStatus.loss.toFixed(2)}</span>
+                    </span>
+                `;
+            } else if (transaction.type === 'sell') {
+                // For sells with no wash sale, show if it was a loss or gain
+                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
+                const pnl = (transaction.price - averageCost) * transaction.quantity;
+                
+                if (pnl < 0) {
+                    washSaleDisplay = `
+                        <span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                            ✅ Safe Loss<br>
+                            <span class="text-xs text-green-600">-$${Math.abs(pnl).toFixed(2)}</span>
+                        </span>
+                    `;
+                }
+            }
+            
             return `
                 <tr>
                     <td class="px-6 py-4">${new Date(transaction.date).toLocaleDateString()}</td>
@@ -308,7 +334,7 @@ class WashSafeApp {
                     <td class="px-6 py-4">$${transaction.price.toFixed(2)}</td>
                     <td class="px-6 py-4">$${transaction.total.toFixed(2)}</td>
                     <td class="px-6 py-4">
-                        <span class="text-xs text-gray-500">-</span>
+                        ${washSaleDisplay}
                     </td>
                 </tr>
             `;
@@ -330,7 +356,7 @@ class WashSafeApp {
                 alerts.push({
                     type: 'wash-sale-risk',
                     symbol: position.symbol,
-                    message: `Don't buy more ${position.symbol} until ${safeDate.toLocaleDateString()} to avoid wash sale rules.`,
+                    message: `Recent purchase: Avoid selling ${position.symbol} at a loss until ${safeDate.toLocaleDateString()} to preserve tax benefits.`,
                     priority: 'high'
                 });
             }

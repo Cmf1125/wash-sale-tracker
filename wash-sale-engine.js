@@ -137,7 +137,7 @@ class WashSaleEngine {
                 loss: loss,
                 recentPurchases: recentPurchases,
                 safeDate: new Date(sellDate.getTime() + (31 * 24 * 60 * 60 * 1000)),
-                message: `Warning: Don't buy ${symbol} again until ${new Date(sellDate.getTime() + (31 * 24 * 60 * 60 * 1000)).toLocaleDateString()} to avoid wash sale rule.`
+                message: `Warning: If you buy ${symbol} before ${new Date(sellDate.getTime() + (31 * 24 * 60 * 60 * 1000)).toLocaleDateString()}, this $${loss.toFixed(2)} tax loss will be disallowed if you sell at a loss.`
             };
         }
 
@@ -296,6 +296,48 @@ class WashSaleEngine {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Check if a specific transaction was involved in a wash sale
+     * This is for historical analysis of existing transactions
+     */
+    getTransactionWashSaleStatus(targetTransaction) {
+        if (targetTransaction.type !== 'sell') {
+            return null; // Only sells can trigger wash sales
+        }
+
+        const symbol = targetTransaction.symbol;
+        const sellDate = new Date(targetTransaction.date);
+        const thirtyDaysBefore = new Date(sellDate.getTime() - (30 * 24 * 60 * 60 * 1000));
+        const thirtyDaysAfter = new Date(sellDate.getTime() + (30 * 24 * 60 * 60 * 1000));
+
+        // Calculate if this was a loss
+        const { averageCost } = this.calculateAverageCost(symbol, sellDate);
+        const loss = (averageCost - targetTransaction.price) * targetTransaction.quantity;
+
+        if (loss <= 0) {
+            return null; // No loss, no wash sale
+        }
+
+        // Look for purchases within 30 days before or after
+        const conflictingPurchases = this.transactions.filter(t => {
+            if (t.symbol !== symbol || t.type !== 'buy') return false;
+            if (t.id === targetTransaction.id) return false; // Don't compare with itself
+            
+            const transactionDate = new Date(t.date);
+            return transactionDate >= thirtyDaysBefore && transactionDate <= thirtyDaysAfter;
+        });
+
+        if (conflictingPurchases.length > 0) {
+            return {
+                type: 'wash_sale_violation',
+                loss: loss,
+                conflictingTransactions: conflictingPurchases
+            };
+        }
+
+        return null;
     }
 
     /**
