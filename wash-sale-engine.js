@@ -303,7 +303,10 @@ class WashSaleEngine {
      * This is for historical analysis of existing transactions
      */
     getTransactionWashSaleStatus(targetTransaction) {
+        console.log(`🔍 Checking wash sale for ${targetTransaction.symbol} on ${new Date(targetTransaction.date).toLocaleDateString()}`);
+        
         if (targetTransaction.type !== 'sell') {
+            console.log(`   → Skipping: Not a sell transaction`);
             return null; // Only sells can trigger wash sales
         }
 
@@ -316,7 +319,11 @@ class WashSaleEngine {
         const { averageCost } = this.calculateAverageCost(symbol, sellDate);
         const loss = (averageCost - targetTransaction.price) * targetTransaction.quantity;
 
+        console.log(`   → Average cost: $${averageCost.toFixed(2)}, Sell price: $${targetTransaction.price.toFixed(2)}`);
+        console.log(`   → Loss calculation: $${loss.toFixed(2)}`);
+
         if (loss <= 0) {
+            console.log(`   → No wash sale: Not a loss (profit of $${Math.abs(loss).toFixed(2)})`);
             return null; // No loss, no wash sale
         }
 
@@ -329,7 +336,10 @@ class WashSaleEngine {
             return transactionDate >= thirtyDaysBefore && transactionDate <= thirtyDaysAfter;
         });
 
+        console.log(`   → Found ${conflictingPurchases.length} conflicting purchases within 30 days`);
+
         if (conflictingPurchases.length > 0) {
+            console.log(`   → WASH SALE DETECTED! Loss of $${loss.toFixed(2)} disallowed`);
             return {
                 type: 'wash_sale_violation',
                 loss: loss,
@@ -337,6 +347,7 @@ class WashSaleEngine {
             };
         }
 
+        console.log(`   → No wash sale: Loss with no conflicting purchases`);
         return null;
     }
 
