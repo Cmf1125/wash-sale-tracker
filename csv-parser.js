@@ -57,8 +57,11 @@ class BrokerCSVParser {
      * Detect broker format based on CSV headers
      */
     detectBrokerFormat(header) {
+        console.log('🔍 Detecting broker format from header:', header);
+        
         // Charles Schwab format
         if (header.includes('action') && header.includes('symbol') && header.includes('description')) {
+            console.log('✅ Detected Charles Schwab format');
             return 'schwab';
         }
         
@@ -147,6 +150,7 @@ class BrokerCSVParser {
      */
     parseSchwabLine(values, headers) {
         const data = this.createDataMap(values, headers);
+        console.log('📊 Parsing Schwab line data:', data);
         
         const action = data.action?.toLowerCase();
         if (!action || (!action.includes('buy') && !action.includes('sell') && 
@@ -158,18 +162,35 @@ class BrokerCSVParser {
         
         const symbol = data.symbol?.replace(/['"]/g, '').trim();
         if (!symbol || symbol.length > 10) {
+            console.warn(`⚠️ Skipping Schwab transaction - invalid symbol: "${data.symbol}"`);
             return null; // Invalid symbol
         }
 
-        return {
+        const quantity = Math.abs(parseFloat(data.quantity || 0));
+        const price = Math.abs(parseFloat(data.price || 0));
+        
+        if (quantity <= 0) {
+            console.warn(`⚠️ Skipping Schwab transaction - invalid quantity: "${data.quantity}"`);
+            return null;
+        }
+        
+        if (price <= 0) {
+            console.warn(`⚠️ Skipping Schwab transaction - invalid price: "${data.price}"`);
+            return null;
+        }
+
+        const transaction = {
             type: (action.includes('buy') || action.includes('bought') || action.includes('purchase')) ? 'buy' : 'sell',
             symbol: symbol.toUpperCase(),
-            quantity: Math.abs(parseFloat(data.quantity || 0)),
-            price: Math.abs(parseFloat(data.price || 0)),
+            quantity: quantity,
+            price: price,
             date: this.parseDate(data.date),
             fees: Math.abs(parseFloat(data['fees & comm'] || data.fees || 0)),
             source: 'Charles Schwab CSV Import'
         };
+        
+        console.log('✅ Successfully parsed Schwab transaction:', transaction);
+        return transaction;
     }
 
     /**
