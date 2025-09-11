@@ -438,23 +438,45 @@ class WashSafeApp {
     /**
      * Update tax alerts
      */
-    updateTaxAlerts() {
+    async updateTaxAlerts() {
         const portfolio = window.washSaleEngine.getPortfolio();
         const alertsContainer = document.getElementById('tax-alerts');
         const alerts = [];
 
-        // Check for positions with wash sale risks
-        Object.values(portfolio).forEach(position => {
-            const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
-            if (safeDate && safeDate > new Date()) {
-                alerts.push({
-                    type: 'wash-sale-risk',
-                    symbol: position.symbol,
-                    message: `Recent purchase: Avoid selling ${position.symbol} at a loss until ${safeDate.toLocaleDateString()} to preserve tax benefits.`,
-                    priority: 'high'
+        // Get current prices for all positions to check for unrealized losses
+        const symbols = Object.keys(portfolio);
+        if (symbols.length > 0) {
+            try {
+                const prices = await window.stockPriceService.getBatchPrices(symbols);
+                
+                // Check for positions with wash sale risks (only for loss positions)
+                Object.values(portfolio).forEach(position => {
+                    const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
+                    
+                    // Only show wash sale warning if:
+                    // 1. There's a recent purchase (safeDate exists and is in future)  
+                    // 2. The position would be sold at a loss (current price < average cost)
+                    if (safeDate && safeDate > new Date()) {
+                        const priceData = prices[position.symbol];
+                        const currentPrice = priceData?.price;
+                        
+                        // Check if selling now would be at a loss
+                        if (currentPrice && currentPrice < position.averageCost) {
+                            const unrealizedLoss = (position.averageCost - currentPrice) * position.shares;
+                            alerts.push({
+                                type: 'wash-sale-risk',
+                                symbol: position.symbol,
+                                message: `Recent purchase: Avoid selling ${position.symbol} at a loss until ${safeDate.toLocaleDateString()} to preserve $${unrealizedLoss.toFixed(2)} tax loss.`,
+                                priority: 'high'
+                            });
+                        }
+                    }
                 });
+            } catch (error) {
+                console.warn('Failed to fetch prices for tax alerts:', error);
+                // Skip wash sale alerts if we can't get current prices
             }
-        });
+        }
 
         // Add year-end tax loss harvesting alerts
         const now = new Date();
