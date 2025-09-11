@@ -34,9 +34,9 @@ class StockPriceService {
         try {
             // Try multiple APIs in order of preference
             const apis = [
-                () => this.fetchFromYahooFinance(normalizedSymbol),
-                () => this.fetchFromAlphaVantageDemo(normalizedSymbol),
-                () => this.fetchFromFinnhubDemo(normalizedSymbol)
+                () => this.fetchFromGoogleFinance(normalizedSymbol),
+                () => this.fetchFromYahooFinanceSimple(normalizedSymbol),
+                () => this.fetchFromYahooFinanceV2(normalizedSymbol)
             ];
 
             for (const apiCall of apis) {
@@ -62,6 +62,67 @@ class StockPriceService {
     }
 
     /**
+     * Fetch from Google Finance (reliable and free)
+     */
+    async fetchFromGoogleFinance(symbol) {
+        // Google Finance search API - no key required
+        const url = `https://www.google.com/finance/quote/${symbol}:NASDAQ`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+        });
+        
+        if (!response.ok) throw new Error(`Google Finance error: ${response.status}`);
+        
+        const html = await response.text();
+        
+        // Extract price from HTML - Google shows it in a specific div
+        const priceMatch = html.match(/data-last-price="([^"]+)"/);
+        const currencyMatch = html.match(/data-currency-code="([^"]+)"/);
+        
+        if (!priceMatch) throw new Error('Could not find price in Google Finance response');
+        
+        return {
+            price: parseFloat(priceMatch[1]),
+            source: 'Google Finance',
+            timestamp: new Date(),
+            currency: currencyMatch ? currencyMatch[1] : 'USD'
+        };
+    }
+
+    /**
+     * Fetch from Yahoo Finance (simple endpoint)
+     */
+    async fetchFromYahooFinanceSimple(symbol) {
+        // Try a different Yahoo endpoint that's more reliable
+        const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}&fields=regularMarketPrice,currency`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+        });
+        
+        if (!response.ok) throw new Error(`Yahoo Finance Simple error: ${response.status}`);
+        
+        const data = await response.json();
+        const quote = data?.quoteResponse?.result?.[0];
+        
+        if (!quote || !quote.regularMarketPrice) {
+            throw new Error('No price data from Yahoo Finance Simple');
+        }
+        
+        return {
+            price: parseFloat(quote.regularMarketPrice),
+            source: 'Yahoo Finance Simple',
+            timestamp: new Date(),
+            currency: quote.currency || 'USD'
+        };
+    }
+
+    /**
      * Fetch from Yahoo Finance (unofficial but free)
      */
     async fetchFromYahooFinance(symbol) {
@@ -84,6 +145,91 @@ class StockPriceService {
             timestamp: new Date(),
             currency: result.meta?.currency || 'USD',
             marketState: result.meta?.marketState || 'UNKNOWN'
+        };
+    }
+
+    /**
+     * Fetch from Yahoo Finance V2 (more reliable endpoint)
+     */
+    async fetchFromYahooFinanceV2(symbol) {
+        // Try the summary endpoint which is more reliable
+        const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+        });
+        
+        if (!response.ok) throw new Error(`Yahoo Finance V2 API error: ${response.status}`);
+        
+        const data = await response.json();
+        const priceData = data?.quoteSummary?.result?.[0]?.price;
+        
+        if (!priceData) throw new Error('Invalid Yahoo Finance V2 response');
+        
+        const price = priceData.regularMarketPrice?.raw || priceData.postMarketPrice?.raw;
+        if (!price) throw new Error('No price data from Yahoo Finance V2');
+        
+        return {
+            price: parseFloat(price),
+            source: 'Yahoo Finance V2',
+            timestamp: new Date(),
+            currency: priceData.currency || 'USD',
+            marketState: priceData.marketState || 'UNKNOWN'
+        };
+    }
+
+    /**
+     * Fetch from Polygon.io (free tier)
+     */
+    async fetchFromPolygonFree(symbol) {
+        // Polygon has a generous free tier
+        const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apikey=DEMO_KEY`;
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Polygon API error: ${response.status}`);
+        
+        const data = await response.json();
+        
+        if (!data.results || data.results.length === 0) {
+            throw new Error('No data from Polygon API');
+        }
+        
+        const result = data.results[0];
+        return {
+            price: parseFloat(result.c), // Close price
+            source: 'Polygon.io',
+            timestamp: new Date(),
+            currency: 'USD',
+            volume: result.v,
+            high: result.h,
+            low: result.l
+        };
+    }
+
+    /**
+     * Fetch from Financial Modeling Prep (free tier)
+     */
+    async fetchFromFinancialModelingPrep(symbol) {
+        // FMP has a generous free tier - 250 requests per day
+        const url = `https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=demo`;
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`FMP API error: ${response.status}`);
+        
+        const data = await response.json();
+        
+        if (!data || data.length === 0 || !data[0].price) {
+            throw new Error('No price data from Financial Modeling Prep');
+        }
+        
+        return {
+            price: parseFloat(data[0].price),
+            source: 'Financial Modeling Prep',
+            timestamp: new Date(),
+            currency: 'USD',
+            volume: data[0].volume
         };
     }
 
