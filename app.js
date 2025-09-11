@@ -420,7 +420,7 @@ class WashSafeApp {
                 `;
             } else if (transaction.type === 'sell') {
                 // For sells with no wash sale, show if it was a loss or gain
-                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
+                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
                 const pnl = (transaction.price - averageCost) * transaction.quantity;
                 
                 if (pnl < 0) {
@@ -1027,7 +1027,7 @@ function exportForAccountant() {
         let notes = '';
 
         if (transaction.type === 'sell') {
-            const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
+            const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
             const pnl = (transaction.price - averageCost) * transaction.quantity;
             realizedPnL = pnl.toFixed(2);
 
