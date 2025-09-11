@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WashSafe - Wash Sale Prevention for Traders</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .wash-sale-alert {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .gain { color: #10b981; }
+        .loss { color: #ef4444; }
+        
+        .safe-to-sell { background: #d1fae5; color: #065f46; }
+        .wash-sale-risk { background: #fee2e2; color: #991b1b; }
+        .partial-risk { background: #fef3c7; color: #92400e; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-900">WashSafe</h1>
+                    <span class="ml-2 text-sm text-gray-500">Wash Sale Prevention</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span id="total-portfolio-value" class="text-lg font-semibold text-gray-900">$0.00</span>
+                    <button onclick="exportData()" class="text-blue-600 hover:text-blue-800">Export Data</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Navigation Tabs -->
+        <div class="mb-6">
+            <nav class="flex space-x-8">
+                <button onclick="showTab('trade')" id="tab-trade" class="tab-btn border-b-2 border-blue-500 text-blue-600 pb-2 font-medium">
+                    New Trade
+                </button>
+                <button onclick="showTab('portfolio')" id="tab-portfolio" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
+                    Portfolio
+                </button>
+                <button onclick="showTab('history')" id="tab-history" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
+                    Transaction History
+                </button>
+                <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
+                    Tax Alerts
+                </button>
+            </nav>
+        </div>
+
+        <!-- Trade Entry Tab -->
+        <div id="trade-tab" class="tab-content">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Trade Form -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-bold mb-4">Enter New Trade</h2>
+                    
+                    <form id="trade-form" class="space-y-4">
+                        <!-- Trade Type -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Trade Type</label>
+                            <select id="trade-type" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="buy">Buy</option>
+                                <option value="sell">Sell</option>
+                            </select>
+                        </div>
+
+                        <!-- Symbol -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Symbol</label>
+                            <input type="text" id="symbol" placeholder="AAPL, TSLA, etc." 
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase">
+                        </div>
+
+                        <!-- Quantity -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Shares</label>
+                            <input type="number" id="quantity" placeholder="100" min="1"
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- Price -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Price per Share</label>
+                            <input type="number" id="price" placeholder="150.00" step="0.01" min="0.01"
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- Date -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Trade Date</label>
+                            <input type="date" id="trade-date" value=""
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button type="submit" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-medium">
+                            Check for Wash Sale & Add Trade
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Wash Sale Alert Panel -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-bold mb-4">🚨 Wash Sale Analysis</h2>
+                    
+                    <div id="wash-sale-alert" class="hidden">
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 wash-sale-alert">
+                            <div class="flex items-start">
+                                <div class="text-red-400 text-2xl mr-3">⚠️</div>
+                                <div>
+                                    <h3 class="text-red-800 font-semibold">Wash Sale Detected!</h3>
+                                    <p id="wash-sale-details" class="text-red-700 text-sm mt-1"></p>
+                                    <div class="mt-3 text-xs text-red-600">
+                                        <strong>Tax Impact:</strong> Loss deduction will be disallowed and added to cost basis of remaining shares.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="safe-trade-alert" class="hidden">
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                            <div class="flex items-start">
+                                <div class="text-green-400 text-2xl mr-3">✅</div>
+                                <div>
+                                    <h3 class="text-green-800 font-semibold">Trade is Safe</h3>
+                                    <p class="text-green-700 text-sm mt-1">No wash sale violations detected for this trade.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="no-analysis" class="text-center text-gray-500 py-8">
+                        <div class="text-6xl mb-4">📊</div>
+                        <p>Enter trade details above to check for wash sale violations</p>
+                    </div>
+
+                    <!-- Quick Stats -->
+                    <div class="grid grid-cols-2 gap-4 mt-6">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <div class="text-blue-600 text-sm font-medium">This Year's Losses</div>
+                            <div id="ytd-losses" class="text-2xl font-bold text-blue-900">$0</div>
+                        </div>
+                        <div class="bg-orange-50 p-4 rounded-lg">
+                            <div class="text-orange-600 text-sm font-medium">Wash Sales</div>
+                            <div id="wash-sale-count" class="text-2xl font-bold text-orange-900">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Tab -->
+        <div id="portfolio-tab" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow">
+                <div class="p-6 border-b">
+                    <h2 class="text-xl font-bold">Current Portfolio</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shares</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Cost</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">P&L</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Safe to Sell</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portfolio-table" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                                    No positions yet. Add some trades to see your portfolio.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction History Tab -->
+        <div id="history-tab" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow">
+                <div class="p-6 border-b">
+                    <h2 class="text-xl font-bold">Transaction History</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shares</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wash Sale</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                                    No transactions yet. Start trading to see your history.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Tab -->
+        <div id="alerts-tab" class="tab-content hidden">
+            <div class="space-y-6">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-bold mb-4">Tax Optimization Alerts</h2>
+                    <div id="tax-alerts">
+                        <div class="text-center text-gray-500 py-8">
+                            <div class="text-6xl mb-4">🎯</div>
+                            <p>Tax alerts will appear here based on your trading activity</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="wash-sale-engine.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
