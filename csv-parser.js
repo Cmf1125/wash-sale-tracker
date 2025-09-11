@@ -149,7 +149,10 @@ class BrokerCSVParser {
         const data = this.createDataMap(values, headers);
         
         const action = data.action?.toLowerCase();
-        if (!action || (!action.includes('buy') && !action.includes('sell'))) {
+        if (!action || (!action.includes('buy') && !action.includes('sell') && 
+                        !action.includes('bought') && !action.includes('sold') &&
+                        !action.includes('purchase') && !action.includes('sale'))) {
+            console.warn(`⚠️ Skipping Schwab transaction with action: "${data.action}"`);
             return null; // Skip non-trading transactions
         }
         
@@ -159,7 +162,7 @@ class BrokerCSVParser {
         }
 
         return {
-            type: action.includes('buy') ? 'buy' : 'sell',
+            type: (action.includes('buy') || action.includes('bought') || action.includes('purchase')) ? 'buy' : 'sell',
             symbol: symbol.toUpperCase(),
             quantity: Math.abs(parseFloat(data.quantity || 0)),
             price: Math.abs(parseFloat(data.price || 0)),
