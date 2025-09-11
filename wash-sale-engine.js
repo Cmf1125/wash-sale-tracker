@@ -146,10 +146,13 @@ class WashSaleEngine {
 
     /**
      * Calculate average cost basis for a symbol up to a certain date
+     * @param {string} symbol - Stock symbol
+     * @param {Date|string} upToDate - Calculate up to this date
+     * @param {string} excludeTransactionId - Optional transaction ID to exclude from calculation
      */
-    calculateAverageCost(symbol, upToDate) {
+    calculateAverageCost(symbol, upToDate, excludeTransactionId = null) {
         const symbolTransactions = this.transactions
-            .filter(t => t.symbol === symbol && new Date(t.date) <= upToDate)
+            .filter(t => t.symbol === symbol && new Date(t.date) <= upToDate && t.id !== excludeTransactionId)
             .sort((a, b) => new Date(a.date) - new Date(b.date));
 
         let totalShares = 0;
@@ -255,7 +258,7 @@ class WashSaleEngine {
         // This is simplified - in reality you'd need to track wash sales more carefully
         yearTransactions.forEach(transaction => {
             if (transaction.type === 'sell') {
-                const cost = this.calculateAverageCost(transaction.symbol, transaction.date);
+                const cost = this.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
                 const pnl = (transaction.price - cost.averageCost) * transaction.quantity;
                 
                 if (pnl < 0) {
@@ -315,8 +318,8 @@ class WashSaleEngine {
         const thirtyDaysBefore = new Date(sellDate.getTime() - (30 * 24 * 60 * 60 * 1000));
         const thirtyDaysAfter = new Date(sellDate.getTime() + (30 * 24 * 60 * 60 * 1000));
 
-        // Calculate if this was a loss
-        const { averageCost } = this.calculateAverageCost(symbol, sellDate);
+        // Calculate if this was a loss (exclude this transaction from cost basis)
+        const { averageCost } = this.calculateAverageCost(symbol, sellDate, targetTransaction.id);
         const loss = (averageCost - targetTransaction.price) * targetTransaction.quantity;
 
         console.log(`   → Average cost: $${averageCost.toFixed(2)}, Sell price: $${targetTransaction.price.toFixed(2)}`);

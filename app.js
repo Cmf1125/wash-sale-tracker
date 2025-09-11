@@ -588,23 +588,31 @@ class WashSafeApp {
         );
 
         console.log(`🔍 Tax Summary Debug: Found ${yearTransactions.length} transactions for ${currentYear}`);
+        console.log(`🔍 First 5 transactions:`, yearTransactions.slice(0, 5));
 
         let totalRealizedGains = 0;
         let totalRealizedLosses = 0;
         let totalDisallowedLosses = 0;
         const washSaleViolations = [];
+        const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
+        
+        console.log(`🔍 Found ${sellTransactions.length} sell transactions this year`);
 
         // Calculate tax impact for each transaction
         yearTransactions.forEach(transaction => {
             if (transaction.type === 'sell') {
-                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
+                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
                 const pnl = (transaction.price - averageCost) * transaction.quantity;
                 
-                console.log(`📊 Analyzing sell: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}, P&L: $${pnl.toFixed(2)}`);
+                console.log(`📊 Analyzing sell: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}`);
+                console.log(`   Price: $${transaction.price}, Avg Cost: $${averageCost.toFixed(2)}, Qty: ${transaction.quantity}`);
+                console.log(`   P&L: $${pnl.toFixed(2)} ${pnl >= 0 ? '(GAIN)' : '(LOSS)'}`);
                 
                 if (pnl > 0) {
                     totalRealizedGains += pnl;
+                    console.log(`   → Added to gains`);
                 } else {
+                    console.log(`   → This is a LOSS, checking for wash sale...`);
                     // Check if this is a wash sale
                     const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
                     console.log(`🔍 Wash sale check for ${transaction.symbol}:`, washSaleStatus ? washSaleStatus.type : 'No violation');
@@ -619,8 +627,11 @@ class WashSafeApp {
                         console.log(`⚠️ Found wash sale violation: ${transaction.symbol} -$${Math.abs(pnl).toFixed(2)}`);
                     } else {
                         totalRealizedLosses += Math.abs(pnl);
+                        console.log(`   → Added $${Math.abs(pnl).toFixed(2)} to realized losses`);
                     }
                 }
+            } else {
+                console.log(`📊 Skipping ${transaction.type} transaction: ${transaction.symbol}`);
             }
         });
 
