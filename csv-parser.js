@@ -167,7 +167,18 @@ class BrokerCSVParser {
         }
 
         const quantity = Math.abs(parseFloat(data.quantity || 0));
-        const price = Math.abs(parseFloat(data.price || 0));
+        
+        // Try multiple possible price column names for Schwab
+        let priceValue = data.price || data['price per share'] || data['execution price'] || 
+                        data['unit price'] || data.cost || data['price/share'];
+        
+        // If price has $ sign or commas, clean it
+        if (typeof priceValue === 'string') {
+            priceValue = priceValue.replace(/[\$,]/g, '');
+        }
+        
+        const price = Math.abs(parseFloat(priceValue || 0));
+        console.log(`💰 Price parsing: raw="${data.price}", cleaned="${priceValue}", final=${price}`);
         
         if (quantity <= 0) {
             console.warn(`⚠️ Skipping Schwab transaction - invalid quantity: "${data.quantity}"`);
@@ -185,7 +196,7 @@ class BrokerCSVParser {
             quantity: quantity,
             price: price,
             date: this.parseDate(data.date),
-            fees: Math.abs(parseFloat(data['fees & comm'] || data.fees || 0)),
+            fees: Math.abs(parseFloat(data['fees & comm'] || data['fees & commission'] || data.fees || data.commission || 0)),
             source: 'Charles Schwab CSV Import'
         };
         
