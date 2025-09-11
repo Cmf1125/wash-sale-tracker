@@ -93,11 +93,46 @@ Loss of $500 will be disallowed for tax purposes.
 
 ## 📱 Getting Started
 
+### For Users (GitHub Pages/Static Hosting)
 1. **Open `index.html`** in any modern web browser
 2. **Add your first trade** using the "New Trade" tab
 3. **Watch the real-time analysis** as you type
 4. **Review your portfolio** and safe-to-sell dates
 5. **Export your data** for tax preparation
+
+*Note: Real-time stock prices require the Vercel deployment (see below)*
+
+### For Developers (Full Setup with Real Prices)
+
+#### 1. Get a Free API Key
+- Visit [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+- Sign up for a free account (25 API calls/day)
+- Copy your API key
+
+#### 2. Deploy to Vercel
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/wash-sale-tracker
+cd wash-sale-tracker
+
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy to Vercel
+vercel
+
+# Add your API key as environment variable
+vercel env add ALPHA_VANTAGE_API_KEY
+# Paste your Alpha Vantage API key when prompted
+
+# Redeploy with the environment variable
+vercel --prod
+```
+
+#### 3. Use Your Deployed Version
+- Your app will be available at `your-project.vercel.app`
+- Real stock prices will work automatically
+- Share this URL with others - no API keys needed for users!
 
 ## 🧮 Wash Sale Rules (IRS)
 

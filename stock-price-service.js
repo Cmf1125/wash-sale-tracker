@@ -36,8 +36,7 @@ class StockPriceService {
         try {
             // Try multiple APIs in order of preference
             const apis = [
-                () => this.fetchFromCORSProxy(normalizedSymbol),
-                () => this.fetchFromAlphaVantageFree(normalizedSymbol)
+                () => this.fetchFromVercelAPI(normalizedSymbol)
             ];
 
             for (const apiCall of apis) {
@@ -61,6 +60,90 @@ class StockPriceService {
             console.log(`🔄 Using fallback price for ${normalizedSymbol}`);
             return this.getFallbackPrice(normalizedSymbol);
         }
+    }
+
+    /**
+     * Fetch from our Vercel API endpoint
+     */
+    async fetchFromVercelAPI(symbol) {
+        // Use relative URL so it works both locally and on Vercel
+        const url = `/api/stock-price?symbol=${symbol}`;
+        
+        console.log(`🔍 Fetching ${symbol} from Vercel API...`);
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Vercel API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log(`✅ Got ${symbol} price from Vercel API:`, data);
+        
+        if (!data.price || data.price <= 0) {
+            throw new Error('Invalid price data from Vercel API');
+        }
+        
+        return {
+            price: parseFloat(data.price),
+            source: data.source || 'Vercel API',
+            timestamp: new Date(data.timestamp || Date.now()),
+            currency: data.currency || 'USD'
+        };
+    }
+
+    /**
+     * Fetch from Twelve Data (simple free API)
+     */
+    async fetchFromTwelveData(symbol) {
+        // Twelve Data has 5 requests per minute free
+        const url = `https://api.twelvedata.com/price?symbol=${symbol}&apikey=demo`;
+        
+        console.log(`🔍 Fetching ${symbol} from Twelve Data...`);
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Twelve Data error: ${response.status}`);
+        
+        const data = await response.json();
+        console.log('Twelve Data response:', data);
+        
+        if (data.status === 'error' || !data.price) {
+            throw new Error(data.message || 'No price from Twelve Data');
+        }
+        
+        return {
+            price: parseFloat(data.price),
+            source: 'Twelve Data',
+            timestamp: new Date(),
+            currency: 'USD'
+        };
+    }
+
+    /**
+     * Fetch from a simple market data API
+     */
+    async fetchFromMarketData(symbol) {
+        // Using a simple REST API
+        const url = `https://api.marketdata.app/v1/stocks/quotes/${symbol}/?token=demo`;
+        
+        console.log(`🔍 Fetching ${symbol} from Market Data...`);
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Market Data error: ${response.status}`);
+        
+        const data = await response.json();
+        console.log('Market Data response:', data);
+        
+        if (!data || !data.last || data.last.length === 0) {
+            throw new Error('No price from Market Data');
+        }
+        
+        return {
+            price: parseFloat(data.last[0]),
+            source: 'Market Data',
+            timestamp: new Date(),
+            currency: 'USD'
+        };
     }
 
     /**
