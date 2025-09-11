@@ -159,6 +159,12 @@ class WashSafeApp {
             return;
         }
 
+        // Only check wash sales for sell transactions
+        if (formData.type !== 'sell') {
+            document.getElementById('no-analysis').classList.remove('hidden');
+            return;
+        }
+
         // Check for wash sale
         const washSaleResult = window.washSaleEngine.checkWashSale(formData);
         
@@ -168,8 +174,11 @@ class WashSafeApp {
         } else if (washSaleResult && washSaleResult.type === 'wash_sale_warning') {
             document.getElementById('wash-sale-alert').classList.remove('hidden');
             document.getElementById('wash-sale-details').textContent = washSaleResult.message;
-        } else {
+        } else if (washSaleResult === null) {
+            // This means it's a sell but either no loss or no wash sale violation
             document.getElementById('safe-trade-alert').classList.remove('hidden');
+        } else {
+            document.getElementById('no-analysis').classList.remove('hidden');
         }
     }
 

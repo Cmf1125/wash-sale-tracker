@@ -160,9 +160,11 @@ class WashSaleEngine {
                 totalShares += transaction.quantity;
                 totalCost += transaction.total;
             } else if (transaction.type === 'sell') {
-                const sellRatio = transaction.quantity / totalShares;
-                totalCost -= (totalCost * sellRatio);
-                totalShares -= transaction.quantity;
+                if (totalShares > 0) {
+                    const sellRatio = transaction.quantity / totalShares;
+                    totalCost -= (totalCost * sellRatio);
+                    totalShares -= transaction.quantity;
+                }
             }
         });
 
@@ -198,10 +200,14 @@ class WashSaleEngine {
                 positions[symbol].shares += transaction.quantity;
                 positions[symbol].totalCost += transaction.total;
             } else if (transaction.type === 'sell') {
+                const sharesBeforeSale = positions[symbol].shares;
                 positions[symbol].shares -= transaction.quantity;
-                // Reduce cost proportionally
-                const sellRatio = transaction.quantity / (positions[symbol].shares + transaction.quantity);
-                positions[symbol].totalCost -= (positions[symbol].totalCost * sellRatio / (1 - sellRatio));
+                
+                // Reduce cost proportionally (avoid division by zero)
+                if (sharesBeforeSale > 0) {
+                    const sellRatio = transaction.quantity / sharesBeforeSale;
+                    positions[symbol].totalCost -= (positions[symbol].totalCost * sellRatio);
+                }
             }
         });
 
