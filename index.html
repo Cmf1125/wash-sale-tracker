@@ -34,7 +34,12 @@
                 </div>
                 <div class="flex items-center gap-4">
                     <span id="total-portfolio-value" class="text-lg font-semibold text-gray-900">$0.00</span>
-                    <button onclick="exportData()" class="text-blue-600 hover:text-blue-800">Export Data</button>
+                    <div class="flex items-center gap-2">
+                        <span id="save-status" class="text-xs text-green-600">✓ Saved</span>
+                        <button onclick="exportData()" class="text-blue-600 hover:text-blue-800 text-sm">Export Data</button>
+                        <button onclick="importData()" class="text-gray-600 hover:text-gray-800 text-sm">Import Data</button>
+                        <button onclick="clearAllData()" class="text-red-600 hover:text-red-800 text-sm">Clear All</button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -71,6 +71,9 @@ class WashSafeApp {
             // Update all UI components
             this.updateUI();
             
+            // Show save confirmation
+            updateSaveStatus('✓ Trade Saved');
+            
         } catch (error) {
             console.error('Error adding transaction:', error);
             alert('Error adding transaction. Please try again.');
@@ -425,6 +428,63 @@ function sellPosition(symbol) {
 
 function exportData() {
     window.washSaleEngine.exportTransactions();
+}
+
+function importData() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                
+                if (confirm(`Import ${data.transactions?.length || 0} transactions? This will replace your current data.`)) {
+                    window.washSaleEngine.transactions = data.transactions || [];
+                    window.washSaleEngine.saveTransactions();
+                    window.app.updateUI();
+                    updateSaveStatus('✓ Data Imported');
+                    alert('✅ Data imported successfully!');
+                }
+            } catch (error) {
+                alert('❌ Error importing data. Please check the file format.');
+                console.error('Import error:', error);
+            }
+        };
+        reader.readAsText(file);
+    };
+    
+    input.click();
+}
+
+function clearAllData() {
+    if (window.washSaleEngine.clearAllData()) {
+        window.app.updateUI();
+        updateSaveStatus('✓ Data Cleared');
+        alert('✅ All data cleared successfully!');
+    }
+}
+
+function updateSaveStatus(message) {
+    const statusElement = document.getElementById('save-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.className = 'text-xs text-green-600';
+        
+        // Flash effect for visual feedback
+        setTimeout(() => {
+            statusElement.style.opacity = '0.5';
+            setTimeout(() => {
+                statusElement.style.opacity = '1';
+                statusElement.textContent = '✓ Saved';
+            }, 200);
+        }, 1000);
+    }
 }
 
 // Initialize the app when DOM is loaded
