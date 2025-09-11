@@ -62,9 +62,6 @@
                 <button onclick="showTab('alerts')" id="tab-alerts" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
                     Tax Alerts
                 </button>
-                <button onclick="showTab('tax')" id="tab-tax" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
-                    Tax Summary
-                </button>
                 <button onclick="showTab('help')" id="tab-help" class="tab-btn border-b-2 border-transparent text-gray-500 pb-2 hover:text-gray-700">
                     Import Help
                 </button>
@@ -207,6 +204,16 @@
 
         <!-- Transaction History Tab -->
         <div id="history-tab" class="tab-content hidden">
+            <!-- Yearly Summary -->
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="p-6 border-b">
+                    <h2 class="text-xl font-bold mb-4">📊 Yearly Summary</h2>
+                    <div id="yearly-summary-container">
+                        <!-- Dynamic yearly summaries will be inserted here -->
+                    </div>
+                </div>
+            </div>
+            
             <div class="bg-white rounded-lg shadow">
                 <div class="p-6 border-b">
                     <h2 class="text-xl font-bold">Transaction History</h2>
@@ -251,84 +258,6 @@
             </div>
         </div>
 
-        <!-- Tax Summary Tab -->
-        <div id="tax-tab" class="tab-content hidden">
-            <div class="space-y-6">
-                <!-- Tax Year Summary -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <h2 class="text-xl font-bold mb-4">📊 Tax Year Summary</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-green-50 p-4 rounded-lg">
-                            <div class="text-2xl font-bold text-green-600" id="total-realized-gains">$0.00</div>
-                            <div class="text-sm text-green-700">Realized Gains</div>
-                        </div>
-                        <div class="bg-red-50 p-4 rounded-lg">
-                            <div class="text-2xl font-bold text-red-600" id="total-realized-losses">$0.00</div>
-                            <div class="text-sm text-red-700">Realized Losses</div>
-                        </div>
-                        <div class="bg-orange-50 p-4 rounded-lg">
-                            <div class="text-2xl font-bold text-orange-600" id="total-disallowed-losses">$0.00</div>
-                            <div class="text-sm text-orange-700">Disallowed Losses (Wash Sales)</div>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg">
-                            <div class="text-2xl font-bold text-blue-600" id="net-tax-impact">$0.00</div>
-                            <div class="text-sm text-blue-700">Net Taxable Gain/Loss</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tax Loss Harvesting Opportunities -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <h3 class="text-lg font-bold mb-4">🌾 Tax Loss Harvesting Opportunities</h3>
-                    <div id="tax-harvesting-opportunities">
-                        <div class="text-center text-gray-500 py-4">
-                            <p>Loading unrealized losses...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Wash Sale Details -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <h3 class="text-lg font-bold mb-4">⚠️ Wash Sale Violations This Year</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shares</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Loss Disallowed</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="wash-sale-table" class="divide-y divide-gray-200">
-                                <tr>
-                                    <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                                        No wash sale violations this year. Great job! 🎉
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Export Options -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <h3 class="text-lg font-bold mb-4">📁 Export Tax Data</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <button onclick="exportTaxSummary()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium">
-                            📊 Export Tax Summary (JSON)
-                        </button>
-                        <button onclick="exportForAccountant()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-medium">
-                            👨‍💼 Export for Accountant (CSV)
-                        </button>
-                    </div>
-                    <p class="text-sm text-gray-500 mt-3">
-                        Export your tax data for easy import into tax software or sharing with your accountant.
-                    </p>
-                </div>
-            </div>
-        </div>
 
         <!-- Import Help Tab -->
         <div id="help-tab" class="tab-content hidden">

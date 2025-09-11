@@ -221,11 +221,10 @@ class WashSafeApp {
         if (tabName === 'portfolio') {
             this.updatePortfolioTable();
         } else if (tabName === 'history') {
+            this.updateYearlySummary();
             this.updateHistoryTable();
         } else if (tabName === 'alerts') {
             this.updateTaxAlerts();
-        } else if (tabName === 'tax') {
-            this.updateTaxSummary();
         } else if (tabName === 'help') {
             // Help tab is static HTML, no updates needed
         }
@@ -579,205 +578,102 @@ class WashSafeApp {
     }
 
     /**
-     * Update tax summary tab with comprehensive tax information
+     * Update yearly summary in Transaction History tab
      */
-    async updateTaxSummary() {
-        const currentYear = new Date().getFullYear();
-        const yearTransactions = window.washSaleEngine.transactions.filter(t => 
-            new Date(t.date).getFullYear() === currentYear
-        );
-
-        console.log(`🔍 Tax Summary Debug: Found ${yearTransactions.length} transactions for ${currentYear}`);
-        console.log(`🔍 First 5 transactions:`, yearTransactions.slice(0, 5));
-
-        let totalRealizedGains = 0;
-        let totalRealizedLosses = 0;
-        let totalDisallowedLosses = 0;
-        const washSaleViolations = [];
-        const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
+    updateYearlySummary() {
+        const container = document.getElementById('yearly-summary-container');
+        const allTransactions = window.washSaleEngine.transactions;
         
-        console.log(`🔍 Found ${sellTransactions.length} sell transactions this year`);
+        if (allTransactions.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-gray-500 py-4">
+                    <p>No transactions to summarize yet.</p>
+                </div>
+            `;
+            return;
+        }
 
-        // Calculate tax impact for each transaction
-        yearTransactions.forEach(transaction => {
-            if (transaction.type === 'sell') {
-                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
-                const pnl = (transaction.price - averageCost) * transaction.quantity;
-                
-                console.log(`📊 Analyzing sell: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}`);
-                console.log(`   Price: $${transaction.price}, Avg Cost: $${averageCost.toFixed(2)}, Qty: ${transaction.quantity}`);
-                console.log(`   P&L: $${pnl.toFixed(2)} ${pnl >= 0 ? '(GAIN)' : '(LOSS)'}`);
-                
-                if (pnl > 0) {
-                    totalRealizedGains += pnl;
-                    console.log(`   → Added to gains`);
-                } else {
-                    console.log(`   → This is a LOSS, checking for wash sale...`);
-                    // Check if this is a wash sale
-                    const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
-                    console.log(`🔍 Wash sale check for ${transaction.symbol}:`, washSaleStatus ? washSaleStatus.type : 'No violation');
-                    
-                    if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
-                        totalDisallowedLosses += Math.abs(pnl);
-                        washSaleViolations.push({
-                            transaction,
-                            washSaleStatus,
-                            pnl
-                        });
-                        console.log(`⚠️ Found wash sale violation: ${transaction.symbol} -$${Math.abs(pnl).toFixed(2)}`);
-                    } else {
-                        totalRealizedLosses += Math.abs(pnl);
-                        console.log(`   → Added $${Math.abs(pnl).toFixed(2)} to realized losses`);
-                    }
-                }
-            } else {
-                console.log(`📊 Skipping ${transaction.type} transaction: ${transaction.symbol}`);
+        // Group transactions by year
+        const transactionsByYear = {};
+        allTransactions.forEach(transaction => {
+            const year = new Date(transaction.date).getFullYear();
+            if (!transactionsByYear[year]) {
+                transactionsByYear[year] = [];
             }
+            transactionsByYear[year].push(transaction);
         });
 
-        const netTaxImpact = totalRealizedGains - totalRealizedLosses;
+        // Calculate summary for each year
+        const yearSummaries = Object.keys(transactionsByYear)
+            .sort((a, b) => b - a) // Most recent year first
+            .map(year => {
+                const yearTransactions = transactionsByYear[year];
+                let totalGains = 0;
+                let totalLosses = 0;
+                let washSaleViolations = 0;
+                let disallowedLosses = 0;
 
-        console.log(`📈 Tax Summary Results:`);
-        console.log(`   Realized Gains: $${totalRealizedGains.toFixed(2)}`);
-        console.log(`   Realized Losses: $${totalRealizedLosses.toFixed(2)}`);
-        console.log(`   Disallowed Losses: $${totalDisallowedLosses.toFixed(2)}`);
-        console.log(`   Wash Sale Violations: ${washSaleViolations.length}`);
+                yearTransactions.forEach(transaction => {
+                    if (transaction.type === 'sell') {
+                        const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
+                        const pnl = (transaction.price - averageCost) * transaction.quantity;
+                        
+                        if (pnl > 0) {
+                            totalGains += pnl;
+                        } else {
+                            const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+                            if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                                washSaleViolations++;
+                                disallowedLosses += Math.abs(pnl);
+                            } else {
+                                totalLosses += Math.abs(pnl);
+                            }
+                        }
+                    }
+                });
 
-        // Update summary cards
-        document.getElementById('total-realized-gains').textContent = `$${totalRealizedGains.toFixed(2)}`;
-        document.getElementById('total-realized-losses').textContent = `$${totalRealizedLosses.toFixed(2)}`;
-        document.getElementById('total-disallowed-losses').textContent = `$${totalDisallowedLosses.toFixed(2)}`;
-        document.getElementById('net-tax-impact').textContent = `${netTaxImpact >= 0 ? '+' : ''}$${netTaxImpact.toFixed(2)}`;
-
-        // Update wash sale violations table
-        this.updateWashSaleTable(washSaleViolations);
-
-        // Update tax harvesting opportunities
-        await this.updateTaxHarvestingOpportunities();
-    }
-
-    /**
-     * Update wash sale violations table
-     */
-    updateWashSaleTable(washSaleViolations) {
-        const tableBody = document.getElementById('wash-sale-table');
-        
-        if (washSaleViolations.length === 0) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                        No wash sale violations this year. Great job! 🎉
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tableBody.innerHTML = washSaleViolations.map(violation => {
-            const transaction = violation.transaction;
-            const loss = Math.abs(violation.pnl);
-            
-            return `
-                <tr>
-                    <td class="px-6 py-4">${new Date(transaction.date).toLocaleDateString()}</td>
-                    <td class="px-6 py-4 font-medium">${transaction.symbol}</td>
-                    <td class="px-6 py-4">${transaction.quantity}</td>
-                    <td class="px-6 py-4 text-red-600">$${loss.toFixed(2)}</td>
-                    <td class="px-6 py-4">
-                        <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
-                            Disallowed
-                        </span>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    /**
-     * Update tax loss harvesting opportunities
-     */
-    async updateTaxHarvestingOpportunities() {
-        const portfolio = window.washSaleEngine.getPortfolio();
-        const opportunitiesContainer = document.getElementById('tax-harvesting-opportunities');
-        
-        if (Object.keys(portfolio).length === 0) {
-            opportunitiesContainer.innerHTML = `
-                <div class="text-center text-gray-500 py-4">
-                    <p>No positions to analyze for tax loss harvesting.</p>
-                </div>
-            `;
-            return;
-        }
-
-        try {
-            const symbols = Object.keys(portfolio);
-            const prices = await window.stockPriceService.getBatchPrices(symbols);
-            const opportunities = [];
-
-            Object.values(portfolio).forEach(position => {
-                const priceData = prices[position.symbol];
-                const currentPrice = priceData?.price;
-                
-                if (currentPrice && currentPrice < position.averageCost) {
-                    const unrealizedLoss = (position.averageCost - currentPrice) * position.shares;
-                    const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
-                    const isSafeToSell = !safeDate || safeDate <= new Date();
-                    
-                    opportunities.push({
-                        symbol: position.symbol,
-                        shares: position.shares,
-                        currentPrice: currentPrice,
-                        costBasis: position.averageCost,
-                        unrealizedLoss: unrealizedLoss,
-                        isSafeToSell: isSafeToSell,
-                        safeDate: safeDate
-                    });
-                }
+                return {
+                    year,
+                    totalTransactions: yearTransactions.length,
+                    totalGains,
+                    totalLosses,
+                    washSaleViolations,
+                    disallowedLosses,
+                    netGainLoss: totalGains - totalLosses
+                };
             });
 
-            if (opportunities.length === 0) {
-                opportunitiesContainer.innerHTML = `
-                    <div class="text-center text-gray-500 py-4">
-                        <p>No tax loss harvesting opportunities found. All positions are profitable! 📈</p>
+        // Render yearly summaries
+        container.innerHTML = yearSummaries.map(summary => `
+            <div class="border border-gray-200 rounded-lg p-4 mb-4">
+                <h3 class="text-lg font-semibold mb-3">${summary.year}</h3>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900">${summary.totalTransactions}</div>
+                        <div class="text-xs text-gray-500">Transactions</div>
                     </div>
-                `;
-                return;
-            }
-
-            // Sort by largest loss first
-            opportunities.sort((a, b) => b.unrealizedLoss - a.unrealizedLoss);
-
-            opportunitiesContainer.innerHTML = `
-                <div class="space-y-3">
-                    ${opportunities.map(opp => `
-                        <div class="border border-gray-200 rounded-lg p-4">
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <h4 class="font-medium text-gray-900">${opp.symbol}</h4>
-                                    <p class="text-sm text-gray-600">
-                                        ${opp.shares} shares • Cost: $${opp.costBasis.toFixed(2)} • Current: $${opp.currentPrice.toFixed(2)}
-                                    </p>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-lg font-medium text-red-600">-$${opp.unrealizedLoss.toFixed(2)}</div>
-                                    <div class="text-xs ${opp.isSafeToSell ? 'text-green-600' : 'text-orange-600'}">
-                                        ${opp.isSafeToSell ? '✅ Safe to sell' : `⏳ Wait until ${opp.safeDate.toLocaleDateString()}`}
-                                    </div>
-                                </div>
-                            </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-green-600">$${summary.totalGains.toFixed(0)}</div>
+                        <div class="text-xs text-gray-500">Gains</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-red-600">$${summary.totalLosses.toFixed(0)}</div>
+                        <div class="text-xs text-gray-500">Losses</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-orange-600">${summary.washSaleViolations}</div>
+                        <div class="text-xs text-gray-500">Wash Sales</div>
+                        ${summary.disallowedLosses > 0 ? `<div class="text-xs text-orange-600">-$${summary.disallowedLosses.toFixed(0)} disallowed</div>` : ''}
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold ${summary.netGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${summary.netGainLoss >= 0 ? '+' : ''}$${summary.netGainLoss.toFixed(0)}
                         </div>
-                    `).join('')}
+                        <div class="text-xs text-gray-500">Net P&L</div>
+                    </div>
                 </div>
-            `;
-
-        } catch (error) {
-            console.error('Failed to load tax harvesting opportunities:', error);
-            opportunitiesContainer.innerHTML = `
-                <div class="text-center text-gray-500 py-4">
-                    <p>Unable to load current prices for tax loss analysis.</p>
-                </div>
-            `;
-        }
+            </div>
+        `).join('');
     }
 }
 
