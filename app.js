@@ -587,6 +587,8 @@ class WashSafeApp {
             new Date(t.date).getFullYear() === currentYear
         );
 
+        console.log(`🔍 Tax Summary Debug: Found ${yearTransactions.length} transactions for ${currentYear}`);
+
         let totalRealizedGains = 0;
         let totalRealizedLosses = 0;
         let totalDisallowedLosses = 0;
@@ -598,11 +600,15 @@ class WashSafeApp {
                 const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
                 const pnl = (transaction.price - averageCost) * transaction.quantity;
                 
+                console.log(`📊 Analyzing sell: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}, P&L: $${pnl.toFixed(2)}`);
+                
                 if (pnl > 0) {
                     totalRealizedGains += pnl;
                 } else {
                     // Check if this is a wash sale
                     const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+                    console.log(`🔍 Wash sale check for ${transaction.symbol}:`, washSaleStatus ? washSaleStatus.type : 'No violation');
+                    
                     if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
                         totalDisallowedLosses += Math.abs(pnl);
                         washSaleViolations.push({
@@ -610,6 +616,7 @@ class WashSafeApp {
                             washSaleStatus,
                             pnl
                         });
+                        console.log(`⚠️ Found wash sale violation: ${transaction.symbol} -$${Math.abs(pnl).toFixed(2)}`);
                     } else {
                         totalRealizedLosses += Math.abs(pnl);
                     }
@@ -618,6 +625,12 @@ class WashSafeApp {
         });
 
         const netTaxImpact = totalRealizedGains - totalRealizedLosses;
+
+        console.log(`📈 Tax Summary Results:`);
+        console.log(`   Realized Gains: $${totalRealizedGains.toFixed(2)}`);
+        console.log(`   Realized Losses: $${totalRealizedLosses.toFixed(2)}`);
+        console.log(`   Disallowed Losses: $${totalDisallowedLosses.toFixed(2)}`);
+        console.log(`   Wash Sale Violations: ${washSaleViolations.length}`);
 
         // Update summary cards
         document.getElementById('total-realized-gains').textContent = `$${totalRealizedGains.toFixed(2)}`;
