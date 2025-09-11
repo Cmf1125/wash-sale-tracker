@@ -224,6 +224,8 @@ class WashSafeApp {
             this.updateHistoryTable();
         } else if (tabName === 'alerts') {
             this.updateTaxAlerts();
+        } else if (tabName === 'tax') {
+            this.updateTaxSummary();
         } else if (tabName === 'help') {
             // Help tab is static HTML, no updates needed
         }
@@ -575,6 +577,184 @@ class WashSafeApp {
         document.getElementById('ytd-losses').textContent = `$${stats.totalLosses.toFixed(0)}`;
         document.getElementById('wash-sale-count').textContent = stats.washSaleCount;
     }
+
+    /**
+     * Update tax summary tab with comprehensive tax information
+     */
+    async updateTaxSummary() {
+        const currentYear = new Date().getFullYear();
+        const yearTransactions = window.washSaleEngine.transactions.filter(t => 
+            new Date(t.date).getFullYear() === currentYear
+        );
+
+        let totalRealizedGains = 0;
+        let totalRealizedLosses = 0;
+        let totalDisallowedLosses = 0;
+        const washSaleViolations = [];
+
+        // Calculate tax impact for each transaction
+        yearTransactions.forEach(transaction => {
+            if (transaction.type === 'sell') {
+                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
+                const pnl = (transaction.price - averageCost) * transaction.quantity;
+                
+                if (pnl > 0) {
+                    totalRealizedGains += pnl;
+                } else {
+                    // Check if this is a wash sale
+                    const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+                    if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                        totalDisallowedLosses += Math.abs(pnl);
+                        washSaleViolations.push({
+                            transaction,
+                            washSaleStatus,
+                            pnl
+                        });
+                    } else {
+                        totalRealizedLosses += Math.abs(pnl);
+                    }
+                }
+            }
+        });
+
+        const netTaxImpact = totalRealizedGains - totalRealizedLosses;
+
+        // Update summary cards
+        document.getElementById('total-realized-gains').textContent = `$${totalRealizedGains.toFixed(2)}`;
+        document.getElementById('total-realized-losses').textContent = `$${totalRealizedLosses.toFixed(2)}`;
+        document.getElementById('total-disallowed-losses').textContent = `$${totalDisallowedLosses.toFixed(2)}`;
+        document.getElementById('net-tax-impact').textContent = `${netTaxImpact >= 0 ? '+' : ''}$${netTaxImpact.toFixed(2)}`;
+
+        // Update wash sale violations table
+        this.updateWashSaleTable(washSaleViolations);
+
+        // Update tax harvesting opportunities
+        await this.updateTaxHarvestingOpportunities();
+    }
+
+    /**
+     * Update wash sale violations table
+     */
+    updateWashSaleTable(washSaleViolations) {
+        const tableBody = document.getElementById('wash-sale-table');
+        
+        if (washSaleViolations.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                        No wash sale violations this year. Great job! 🎉
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tableBody.innerHTML = washSaleViolations.map(violation => {
+            const transaction = violation.transaction;
+            const loss = Math.abs(violation.pnl);
+            
+            return `
+                <tr>
+                    <td class="px-6 py-4">${new Date(transaction.date).toLocaleDateString()}</td>
+                    <td class="px-6 py-4 font-medium">${transaction.symbol}</td>
+                    <td class="px-6 py-4">${transaction.quantity}</td>
+                    <td class="px-6 py-4 text-red-600">$${loss.toFixed(2)}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                            Disallowed
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Update tax loss harvesting opportunities
+     */
+    async updateTaxHarvestingOpportunities() {
+        const portfolio = window.washSaleEngine.getPortfolio();
+        const opportunitiesContainer = document.getElementById('tax-harvesting-opportunities');
+        
+        if (Object.keys(portfolio).length === 0) {
+            opportunitiesContainer.innerHTML = `
+                <div class="text-center text-gray-500 py-4">
+                    <p>No positions to analyze for tax loss harvesting.</p>
+                </div>
+            `;
+            return;
+        }
+
+        try {
+            const symbols = Object.keys(portfolio);
+            const prices = await window.stockPriceService.getBatchPrices(symbols);
+            const opportunities = [];
+
+            Object.values(portfolio).forEach(position => {
+                const priceData = prices[position.symbol];
+                const currentPrice = priceData?.price;
+                
+                if (currentPrice && currentPrice < position.averageCost) {
+                    const unrealizedLoss = (position.averageCost - currentPrice) * position.shares;
+                    const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
+                    const isSafeToSell = !safeDate || safeDate <= new Date();
+                    
+                    opportunities.push({
+                        symbol: position.symbol,
+                        shares: position.shares,
+                        currentPrice: currentPrice,
+                        costBasis: position.averageCost,
+                        unrealizedLoss: unrealizedLoss,
+                        isSafeToSell: isSafeToSell,
+                        safeDate: safeDate
+                    });
+                }
+            });
+
+            if (opportunities.length === 0) {
+                opportunitiesContainer.innerHTML = `
+                    <div class="text-center text-gray-500 py-4">
+                        <p>No tax loss harvesting opportunities found. All positions are profitable! 📈</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Sort by largest loss first
+            opportunities.sort((a, b) => b.unrealizedLoss - a.unrealizedLoss);
+
+            opportunitiesContainer.innerHTML = `
+                <div class="space-y-3">
+                    ${opportunities.map(opp => `
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h4 class="font-medium text-gray-900">${opp.symbol}</h4>
+                                    <p class="text-sm text-gray-600">
+                                        ${opp.shares} shares • Cost: $${opp.costBasis.toFixed(2)} • Current: $${opp.currentPrice.toFixed(2)}
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-lg font-medium text-red-600">-$${opp.unrealizedLoss.toFixed(2)}</div>
+                                    <div class="text-xs ${opp.isSafeToSell ? 'text-green-600' : 'text-orange-600'}">
+                                        ${opp.isSafeToSell ? '✅ Safe to sell' : `⏳ Wait until ${opp.safeDate.toLocaleDateString()}`}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+        } catch (error) {
+            console.error('Failed to load tax harvesting opportunities:', error);
+            opportunitiesContainer.innerHTML = `
+                <div class="text-center text-gray-500 py-4">
+                    <p>Unable to load current prices for tax loss analysis.</p>
+                </div>
+            `;
+        }
+    }
 }
 
 /**
@@ -750,6 +930,122 @@ function updateSaveStatus(message) {
             }, 200);
         }, 1000);
     }
+}
+
+function exportTaxSummary() {
+    const currentYear = new Date().getFullYear();
+    const yearTransactions = window.washSaleEngine.transactions.filter(t => 
+        new Date(t.date).getFullYear() === currentYear
+    );
+
+    const taxSummary = {
+        year: currentYear,
+        exportDate: new Date().toISOString(),
+        summary: {
+            totalRealizedGains: parseFloat(document.getElementById('total-realized-gains').textContent.replace('$', '').replace(',', '')),
+            totalRealizedLosses: parseFloat(document.getElementById('total-realized-losses').textContent.replace('$', '').replace(',', '')),
+            totalDisallowedLosses: parseFloat(document.getElementById('total-disallowed-losses').textContent.replace('$', '').replace(',', '')),
+            netTaxImpact: parseFloat(document.getElementById('net-tax-impact').textContent.replace('$', '').replace('+', '').replace(',', ''))
+        },
+        transactions: yearTransactions,
+        washSaleViolations: yearTransactions.filter(t => {
+            if (t.type !== 'sell') return false;
+            const status = window.washSaleEngine.getTransactionWashSaleStatus(t);
+            return status && status.type === 'wash_sale_violation';
+        })
+    };
+
+    const blob = new Blob([JSON.stringify(taxSummary, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `washsafe-tax-summary-${currentYear}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    updateSaveStatus('✓ Tax Summary Exported');
+}
+
+function exportForAccountant() {
+    const currentYear = new Date().getFullYear();
+    const yearTransactions = window.washSaleEngine.transactions.filter(t => 
+        new Date(t.date).getFullYear() === currentYear
+    );
+
+    // Create CSV format suitable for accountants
+    const csvHeaders = [
+        'Date',
+        'Type',
+        'Symbol', 
+        'Shares',
+        'Price',
+        'Total',
+        'Realized P&L',
+        'Wash Sale',
+        'Disallowed Loss',
+        'Notes'
+    ];
+
+    const csvRows = yearTransactions.map(transaction => {
+        const date = new Date(transaction.date).toLocaleDateString();
+        const type = transaction.type.toUpperCase();
+        const symbol = transaction.symbol;
+        const shares = transaction.quantity;
+        const price = transaction.price.toFixed(2);
+        const total = transaction.total.toFixed(2);
+        
+        let realizedPnL = '';
+        let washSale = 'No';
+        let disallowedLoss = '';
+        let notes = '';
+
+        if (transaction.type === 'sell') {
+            const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date);
+            const pnl = (transaction.price - averageCost) * transaction.quantity;
+            realizedPnL = pnl.toFixed(2);
+
+            const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+            if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                washSale = 'Yes';
+                disallowedLoss = Math.abs(pnl).toFixed(2);
+                notes = 'Loss disallowed due to wash sale rule';
+            }
+        }
+
+        return [
+            date,
+            type,
+            symbol,
+            shares,
+            price,
+            total,
+            realizedPnL,
+            washSale,
+            disallowedLoss,
+            notes
+        ];
+    });
+
+    // Convert to CSV string
+    const csvContent = [csvHeaders, ...csvRows]
+        .map(row => row.map(field => `"${field}"`).join(','))
+        .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `washsafe-tax-report-${currentYear}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    updateSaveStatus('✓ Tax Report Exported for Accountant');
 }
 
 // Initialize the app when DOM is loaded
