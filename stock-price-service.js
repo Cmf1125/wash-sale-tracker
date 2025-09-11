@@ -28,15 +28,16 @@ class StockPriceService {
             return cached;
         }
 
+        console.log(`🔍 Fetching fresh price for ${normalizedSymbol}...`);
+
         // Rate limiting
         await this.respectRateLimit();
 
         try {
             // Try multiple APIs in order of preference
             const apis = [
-                () => this.fetchFromGoogleFinance(normalizedSymbol),
-                () => this.fetchFromYahooFinanceSimple(normalizedSymbol),
-                () => this.fetchFromYahooFinanceV2(normalizedSymbol)
+                () => this.fetchFromCORSProxy(normalizedSymbol),
+                () => this.fetchFromAlphaVantageFree(normalizedSymbol)
             ];
 
             for (const apiCall of apis) {
@@ -56,39 +57,70 @@ class StockPriceService {
             throw new Error('All price APIs failed');
             
         } catch (error) {
-            console.error(`❌ Failed to get price for ${normalizedSymbol}:`, error);
+            console.error(`❌ Failed to get price for ${normalizedSymbol}:`, error.message || error);
+            console.log(`🔄 Using fallback price for ${normalizedSymbol}`);
             return this.getFallbackPrice(normalizedSymbol);
         }
     }
 
     /**
-     * Fetch from Google Finance (reliable and free)
+     * Fetch from a CORS-friendly proxy service
      */
-    async fetchFromGoogleFinance(symbol) {
-        // Google Finance search API - no key required
-        const url = `https://www.google.com/finance/quote/${symbol}:NASDAQ`;
+    async fetchFromCORSProxy(symbol) {
+        // Using a public CORS proxy to access Yahoo Finance
+        const proxyUrl = 'https://api.allorigins.win/raw?url=';
+        const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`);
+        const url = proxyUrl + targetUrl;
         
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }
-        });
+        console.log(`🔍 Fetching ${symbol} via CORS proxy...`);
         
-        if (!response.ok) throw new Error(`Google Finance error: ${response.status}`);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`CORS Proxy error: ${response.status}`);
         
-        const html = await response.text();
+        const data = await response.json();
+        const result = data?.chart?.result?.[0];
         
-        // Extract price from HTML - Google shows it in a specific div
-        const priceMatch = html.match(/data-last-price="([^"]+)"/);
-        const currencyMatch = html.match(/data-currency-code="([^"]+)"/);
+        if (!result) throw new Error('Invalid proxy response');
         
-        if (!priceMatch) throw new Error('Could not find price in Google Finance response');
+        const price = result.meta?.regularMarketPrice || result.meta?.previousClose;
+        if (!price) throw new Error('No price data from proxy');
         
         return {
-            price: parseFloat(priceMatch[1]),
-            source: 'Google Finance',
+            price: parseFloat(price),
+            source: 'Yahoo via CORS Proxy',
             timestamp: new Date(),
-            currency: currencyMatch ? currencyMatch[1] : 'USD'
+            currency: result.meta?.currency || 'USD',
+            marketState: result.meta?.marketState || 'UNKNOWN'
+        };
+    }
+
+    /**
+     * Fetch from a simple free API (no CORS issues)
+     */
+    async fetchFromFreeAPI(symbol) {
+        // Using a truly free API that supports CORS
+        const url = `https://api.fxempire.com/v1/en/stocks/chart/candles?Identifier=${symbol}.XNAS&IdentifierType=Symbol&AdjustmentMethod=All&IncludeExtended=False&period=1&Precision=Minutes&Count=1`;
+        
+        console.log(`🔍 Fetching ${symbol} from FXEmpire...`);
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`FXEmpire API error: ${response.status}`);
+        
+        const data = await response.json();
+        
+        if (!data || !data.candles || data.candles.length === 0) {
+            throw new Error('No data from FXEmpire');
+        }
+        
+        const candle = data.candles[0];
+        return {
+            price: parseFloat(candle.close),
+            source: 'FXEmpire',
+            timestamp: new Date(),
+            currency: 'USD',
+            high: parseFloat(candle.high),
+            low: parseFloat(candle.low),
+            volume: candle.volume
         };
     }
 
@@ -230,6 +262,45 @@ class StockPriceService {
             timestamp: new Date(),
             currency: 'USD',
             volume: data[0].volume
+        };
+    }
+
+    /**
+     * Fetch from Alpha Vantage (free tier with real key)
+     */
+    async fetchFromAlphaVantageFree(symbol) {
+        // Using a real free Alpha Vantage key (you'll need to get one at alphavantage.co/support/#api-key)
+        // For now, using demo but with different endpoint
+        const apiKey = 'demo';
+        const url = `https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=${symbol}&interval=1min&apikey=${apiKey}&outputsize=compact`;
+        
+        console.log(`🔍 Fetching ${symbol} from Alpha Vantage...`);
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Alpha Vantage API error: ${response.status}`);
+        
+        const data = await response.json();
+        
+        if (data['Error Message'] || data['Note']) {
+            throw new Error('Alpha Vantage rate limit or error');
+        }
+        
+        const timeSeries = data['Time Series (1min)'];
+        if (!timeSeries) throw new Error('No time series data from Alpha Vantage');
+        
+        // Get the most recent price
+        const timestamps = Object.keys(timeSeries);
+        if (timestamps.length === 0) throw new Error('No price data available');
+        
+        const latestData = timeSeries[timestamps[0]];
+        return {
+            price: parseFloat(latestData['4. close']),
+            source: 'Alpha Vantage',
+            timestamp: new Date(),
+            currency: 'USD',
+            high: parseFloat(latestData['2. high']),
+            low: parseFloat(latestData['3. low']),
+            volume: parseInt(latestData['5. volume'])
         };
     }
 
