@@ -309,7 +309,13 @@ class WashSafeApp {
                 }
 
                 const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
-                const isSafeToSell = !safeDate || safeDate <= new Date();
+                
+                // Safe to sell if:
+                // 1. No recent purchases (no safeDate) OR
+                // 2. Safe date has passed OR  
+                // 3. Position is profitable (no wash sale risk for gains)
+                const isPositionProfitable = priceData && priceData.price > position.averageCost;
+                const isSafeToSell = !safeDate || safeDate <= new Date() || isPositionProfitable;
                 
                 return `
                     <tr>
@@ -341,7 +347,13 @@ class WashSafeApp {
                 const pnl = (currentPrice - position.averageCost) * position.shares;
                 const pnlClass = pnl >= 0 ? 'gain' : 'loss';
                 const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
-                const isSafeToSell = !safeDate || safeDate <= new Date();
+                
+                // Safe to sell if:
+                // 1. No recent purchases (no safeDate) OR
+                // 2. Safe date has passed OR  
+                // 3. Position is profitable (no wash sale risk for gains)
+                const isPositionProfitable = pnl >= 0; // Use mock P&L if no real price
+                const isSafeToSell = !safeDate || safeDate <= new Date() || isPositionProfitable;
                 
                 return `
                     <tr>
