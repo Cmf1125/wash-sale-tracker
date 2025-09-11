@@ -608,6 +608,8 @@ class WashSafeApp {
             .sort((a, b) => b - a) // Most recent year first
             .map(year => {
                 const yearTransactions = transactionsByYear[year];
+                console.log(`📊 Processing ${year}: ${yearTransactions.length} transactions`);
+                
                 let totalGains = 0;
                 let totalLosses = 0;
                 let washSaleViolations = 0;
@@ -618,15 +620,22 @@ class WashSafeApp {
                         const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
                         const pnl = (transaction.price - averageCost) * transaction.quantity;
                         
+                        console.log(`🔍 Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}, P&L: $${pnl.toFixed(2)}`);
+                        
                         if (pnl > 0) {
                             totalGains += pnl;
+                            console.log(`   → Added $${pnl.toFixed(2)} to gains`);
                         } else {
                             const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+                            console.log(`   → Wash sale check result:`, washSaleStatus ? washSaleStatus.type : 'null');
+                            
                             if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
                                 washSaleViolations++;
                                 disallowedLosses += Math.abs(pnl);
+                                console.log(`   → WASH SALE! Count: ${washSaleViolations}, Disallowed: $${Math.abs(pnl).toFixed(2)}`);
                             } else {
                                 totalLosses += Math.abs(pnl);
+                                console.log(`   → Regular loss: $${Math.abs(pnl).toFixed(2)}`);
                             }
                         }
                     }
