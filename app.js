@@ -232,7 +232,7 @@ class WashSafeApp {
     /**
      * Update portfolio table
      */
-    updatePortfolioTable() {
+    async updatePortfolioTable() {
         const portfolio = window.washSaleEngine.getPortfolio();
         const tableBody = document.getElementById('portfolio-table');
         
@@ -247,10 +247,8 @@ class WashSafeApp {
             return;
         }
 
+        // Show loading state
         tableBody.innerHTML = Object.values(portfolio).map(position => {
-            const currentPrice = position.averageCost * (0.95 + Math.random() * 0.1); // Mock current price
-            const pnl = (currentPrice - position.averageCost) * position.shares;
-            const pnlClass = pnl >= 0 ? 'gain' : 'loss';
             const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
             const isSafeToSell = !safeDate || safeDate <= new Date();
             
@@ -259,8 +257,12 @@ class WashSafeApp {
                     <td class="px-6 py-4 font-medium text-gray-900">${position.symbol}</td>
                     <td class="px-6 py-4">${position.shares}</td>
                     <td class="px-6 py-4">$${position.averageCost.toFixed(2)}</td>
-                    <td class="px-6 py-4">$${currentPrice.toFixed(2)}</td>
-                    <td class="px-6 py-4 ${pnlClass}">$${pnl.toFixed(2)}</td>
+                    <td class="px-6 py-4">
+                        <span class="text-gray-400 animate-pulse">Loading...</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="text-gray-400 animate-pulse">Loading...</span>
+                    </td>
                     <td class="px-6 py-4">
                         <span class="px-2 py-1 text-xs rounded ${isSafeToSell ? 'safe-to-sell' : 'wash-sale-risk'}">
                             ${isSafeToSell ? 'Safe' : `Wait until ${safeDate.toLocaleDateString()}`}
@@ -274,6 +276,98 @@ class WashSafeApp {
                 </tr>
             `;
         }).join('');
+
+        // Fetch real prices for all symbols
+        const symbols = Object.keys(portfolio);
+        try {
+            const prices = await window.stockPriceService.getBatchPrices(symbols);
+            
+            // Update table with real prices
+            tableBody.innerHTML = Object.values(portfolio).map(position => {
+                const priceData = prices[position.symbol];
+                let currentPrice, pnl, pnlClass, priceDisplay, pnlDisplay;
+                
+                if (priceData && priceData.price > 0) {
+                    currentPrice = priceData.price;
+                    pnl = (currentPrice - position.averageCost) * position.shares;
+                    pnlClass = pnl >= 0 ? 'gain' : 'loss';
+                    
+                    priceDisplay = `$${currentPrice.toFixed(2)}`;
+                    if (priceData.isStale) {
+                        priceDisplay += ` <span class="text-xs text-gray-500">(cached)</span>`;
+                    }
+                    
+                    pnlDisplay = `<span class="${pnlClass}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</span>`;
+                } else {
+                    // Fallback to mock price if real price fails
+                    currentPrice = position.averageCost * (0.95 + Math.random() * 0.1);
+                    pnl = (currentPrice - position.averageCost) * position.shares;
+                    pnlClass = pnl >= 0 ? 'gain' : 'loss';
+                    
+                    priceDisplay = `<span class="text-red-500">$${currentPrice.toFixed(2)} (est)</span>`;
+                    pnlDisplay = `<span class="${pnlClass} text-red-500">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (est)</span>`;
+                }
+
+                const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
+                const isSafeToSell = !safeDate || safeDate <= new Date();
+                
+                return `
+                    <tr>
+                        <td class="px-6 py-4 font-medium text-gray-900">${position.symbol}</td>
+                        <td class="px-6 py-4">${position.shares}</td>
+                        <td class="px-6 py-4">$${position.averageCost.toFixed(2)}</td>
+                        <td class="px-6 py-4">${priceDisplay}</td>
+                        <td class="px-6 py-4">${pnlDisplay}</td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-xs rounded ${isSafeToSell ? 'safe-to-sell' : 'wash-sale-risk'}">
+                                ${isSafeToSell ? 'Safe' : `Wait until ${safeDate.toLocaleDateString()}`}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <button onclick="sellPosition('${position.symbol}')" class="text-blue-600 hover:text-blue-800 text-sm">
+                                Quick Sell
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Failed to fetch stock prices:', error);
+            
+            // Fallback to mock prices with error indication
+            tableBody.innerHTML = Object.values(portfolio).map(position => {
+                const currentPrice = position.averageCost * (0.95 + Math.random() * 0.1);
+                const pnl = (currentPrice - position.averageCost) * position.shares;
+                const pnlClass = pnl >= 0 ? 'gain' : 'loss';
+                const safeDate = window.washSaleEngine.getSafeToSellDate(position.symbol);
+                const isSafeToSell = !safeDate || safeDate <= new Date();
+                
+                return `
+                    <tr>
+                        <td class="px-6 py-4 font-medium text-gray-900">${position.symbol}</td>
+                        <td class="px-6 py-4">${position.shares}</td>
+                        <td class="px-6 py-4">$${position.averageCost.toFixed(2)}</td>
+                        <td class="px-6 py-4">
+                            <span class="text-red-500">$${currentPrice.toFixed(2)} (offline)</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="${pnlClass} text-red-500">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (offline)</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-xs rounded ${isSafeToSell ? 'safe-to-sell' : 'wash-sale-risk'}">
+                                ${isSafeToSell ? 'Safe' : `Wait until ${safeDate.toLocaleDateString()}`}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <button onclick="sellPosition('${position.symbol}')" class="text-blue-600 hover:text-blue-800 text-sm">
+                                Quick Sell
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
     }
 
     /**
@@ -413,16 +507,35 @@ class WashSafeApp {
     /**
      * Update statistics in header and sidebar
      */
-    updateStats() {
+    async updateStats() {
         const stats = window.washSaleEngine.getYTDStats();
         const portfolio = window.washSaleEngine.getPortfolio();
         
-        // Calculate total portfolio value
+        // Calculate total portfolio value with real prices
         let totalValue = 0;
-        Object.values(portfolio).forEach(position => {
-            const mockCurrentPrice = position.averageCost * (0.95 + Math.random() * 0.1);
-            totalValue += position.shares * mockCurrentPrice;
-        });
+        const symbols = Object.keys(portfolio);
+        
+        if (symbols.length > 0) {
+            try {
+                const prices = await window.stockPriceService.getBatchPrices(symbols);
+                
+                Object.values(portfolio).forEach(position => {
+                    const priceData = prices[position.symbol];
+                    const currentPrice = (priceData && priceData.price > 0) 
+                        ? priceData.price 
+                        : position.averageCost * (0.95 + Math.random() * 0.1); // Fallback
+                    
+                    totalValue += position.shares * currentPrice;
+                });
+            } catch (error) {
+                console.error('Failed to fetch prices for stats:', error);
+                // Fallback to mock prices
+                Object.values(portfolio).forEach(position => {
+                    const mockCurrentPrice = position.averageCost * (0.95 + Math.random() * 0.1);
+                    totalValue += position.shares * mockCurrentPrice;
+                });
+            }
+        }
 
         document.getElementById('total-portfolio-value').textContent = `$${totalValue.toFixed(2)}`;
         document.getElementById('ytd-losses').textContent = `$${stats.totalLosses.toFixed(0)}`;
