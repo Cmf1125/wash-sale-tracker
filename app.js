@@ -1094,11 +1094,31 @@ function importCSV() {
                     let skippedCount = 0;
                     let duplicateCount = 0;
                     let invalidCount = 0;
+                    let fifoRejectedCount = 0;
+                    let engineErrorCount = 0;
                     
-                    console.log(`🔍 Processing ${result.transactions.length} parsed transactions...`);
+                    console.log(`\n🔍 DETAILED CSV IMPORT ANALYSIS`);
+                    console.log(`📊 Total parsed from CSV: ${result.transactions.length} transactions`);
+                    console.log(`📊 Current engine has: ${window.washSaleEngine.transactions.length} existing transactions`);
+                    console.log(`📊 Current share lots: ${window.washSaleEngine.shareLots.length} lots`);
                     
-                    result.transactions.forEach((transaction, index) => {
-                        console.log(`\n📊 Transaction ${index + 1}/${result.transactions.length}:`, transaction);
+                    // Show a sample of parsed transactions
+                    console.log(`\n📋 Sample of parsed transactions:`);
+                    result.transactions.slice(0, 5).forEach((t, i) => {
+                        console.log(`   ${i+1}. ${new Date(t.date).toDateString()} - ${t.type} ${t.quantity} ${t.symbol} @ $${t.price}`);
+                    });
+                    if (result.transactions.length > 5) {
+                        console.log(`   ... and ${result.transactions.length - 5} more`);
+                    }
+                    
+                    // Sort transactions chronologically to ensure proper FIFO processing
+                    // (purchases must be processed before sales that depend on them)
+                    const sortedTransactions = [...result.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+                    console.log(`\n🔄 Sorted ${sortedTransactions.length} transactions chronologically for FIFO processing`);
+                    console.log(`📅 Date range: ${new Date(sortedTransactions[0]?.date).toDateString()} to ${new Date(sortedTransactions[sortedTransactions.length-1]?.date).toDateString()}`);
+                    
+                    sortedTransactions.forEach((transaction, index) => {
+                        console.log(`\n📊 Transaction ${index + 1}/${sortedTransactions.length} (${new Date(transaction.date).toDateString()}):`, transaction);
                         
                         const validation = window.brokerCSVParser.validateTransaction(transaction);
                         console.log(`   → Validation result:`, validation);
@@ -1114,9 +1134,34 @@ function importCSV() {
                             );
                             
                             if (!duplicate) {
-                                console.log(`   → ✅ Adding transaction: ${transaction.type} ${transaction.quantity} ${transaction.symbol} @ $${transaction.price}`);
-                                window.washSaleEngine.addTransaction(transaction);
-                                importedCount++;
+                                console.log(`   → ✅ Adding transaction: ${transaction.type} ${transaction.quantity} ${transaction.symbol} @ $${transaction.price} on ${new Date(transaction.date).toDateString()}`);
+                                
+                                try {
+                                    // Use force import mode for CSV imports to ensure all valid transactions are recorded
+                                    const addResult = window.washSaleEngine.addTransaction(transaction, { forceImport: true });
+                                    
+                                    if (addResult && addResult.transaction) {
+                                        importedCount++;
+                                        console.log(`   → ✅ Successfully imported to engine`);
+                                        
+                                        if (addResult.washSaleViolation) {
+                                            if (addResult.washSaleViolation.forcedImport) {
+                                                console.log(`   → ⚠️ Forced import despite FIFO issue: ${addResult.washSaleViolation.message}`);
+                                                fifoRejectedCount++;
+                                            } else {
+                                                console.log(`   → ⚠️ Wash sale detected: ${addResult.washSaleViolation.message}`);
+                                            }
+                                        }
+                                    } else {
+                                        console.error(`   → ❌ Engine failed to import transaction:`, addResult);
+                                        engineErrorCount++;
+                                        skippedCount++;
+                                    }
+                                } catch (error) {
+                                    console.error(`   → ❌ Exception during import:`, error);
+                                    engineErrorCount++;
+                                    skippedCount++;
+                                }
                             } else {
                                 console.log(`   → ⚠️ Skipping duplicate transaction`);
                                 duplicateCount++;
@@ -1139,17 +1184,31 @@ function importCSV() {
                         resultMessage += `⚠️ Duplicates: ${duplicateCount} (already existed)\n`;
                     }
                     if (invalidCount > 0) {
-                        resultMessage += `❌ Invalid: ${invalidCount} (check console for details)\n`;
+                        resultMessage += `❌ Invalid: ${invalidCount} (validation failed)\n`;
+                    }
+                    if (fifoRejectedCount > 0) {
+                        resultMessage += `❌ FIFO Rejected: ${fifoRejectedCount} (insufficient shares)\n`;
+                    }
+                    if (engineErrorCount > 0) {
+                        resultMessage += `❌ Engine Errors: ${engineErrorCount} (processing failed)\n`;
                     }
                     resultMessage += `\n🔍 Check console log for detailed import analysis.`;
                     resultMessage += `\n📈 Review Portfolio and History tabs to verify your data.`;
                     
-                    console.log(`\n📈 IMPORT SUMMARY:`);
-                    console.log(`   Total in CSV: ${result.transactions.length}`);
-                    console.log(`   ✅ Imported: ${importedCount}`);
-                    console.log(`   ⚠️ Duplicates: ${duplicateCount}`);
-                    console.log(`   ❌ Invalid: ${invalidCount}`);
+                    console.log(`\n📈 DETAILED IMPORT SUMMARY:`);
+                    console.log(`   📊 Total in CSV: ${result.transactions.length}`);
+                    console.log(`   ✅ Successfully imported: ${importedCount}`);
+                    console.log(`   ⚠️ Duplicates (skipped): ${duplicateCount}`);
+                    console.log(`   ❌ Invalid (validation failed): ${invalidCount}`);
+                    console.log(`   ❌ FIFO rejected (insufficient shares): ${fifoRejectedCount}`);
+                    console.log(`   ❌ Engine errors: ${engineErrorCount}`);
                     console.log(`   📊 Total skipped: ${skippedCount}`);
+                    console.log(`   🔍 Success rate: ${((importedCount / result.transactions.length) * 100).toFixed(1)}%`);
+                    
+                    // Show current state after import
+                    console.log(`\n📊 ENGINE STATE AFTER IMPORT:`);
+                    console.log(`   Total transactions: ${window.washSaleEngine.transactions.length}`);
+                    console.log(`   Total share lots: ${window.washSaleEngine.shareLots.length}`);
                     
                     alert(resultMessage);
                 } else {

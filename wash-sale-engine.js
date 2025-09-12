@@ -108,8 +108,11 @@ class WashSaleEngine {
 
     /**
      * Add a new transaction and check for wash sales using FIFO
+     * @param {Object} transaction - The transaction to add
+     * @param {Object} options - Options for adding the transaction
+     * @param {boolean} options.forceImport - If true, add transaction even if FIFO validation fails (for CSV imports)
      */
-    addTransaction(transaction) {
+    addTransaction(transaction, options = {}) {
         // Add unique ID and timestamp
         transaction.id = Date.now() + Math.random();
         transaction.createdAt = new Date().toISOString();
@@ -135,28 +138,38 @@ class WashSaleEngine {
             fifoResult = this.processFifoSale(transaction);
             
             if (!fifoResult.success) {
-                return {
-                    transaction: null,
-                    washSaleViolation: {
+                if (options.forceImport) {
+                    console.warn(`⚠️ FORCE IMPORT: Recording sell transaction despite FIFO failure: ${fifoResult.error}`);
+                    // We'll add the transaction anyway, but mark it as problematic
+                    washSaleResult = {
                         type: 'insufficient_shares',
-                        message: fifoResult.error
-                    },
-                    fifoResult: fifoResult
-                };
-            }
-            
-            // Update share lots after successful sale
-            this.updateShareLotsAfterSale(fifoResult.lotSales);
-            
-            // Check if any wash sales occurred
-            const washSales = fifoResult.lotSales.filter(sale => sale.isWashSale);
-            if (washSales.length > 0) {
-                washSaleResult = {
-                    type: 'wash_sale_violation',
-                    loss: fifoResult.totalWashSaleLoss,
-                    lotSales: washSales,
-                    message: `Wash sale detected! $${fifoResult.totalWashSaleLoss.toFixed(2)} loss disallowed across ${washSales.length} lot(s).`
-                };
+                        message: `${fifoResult.error} (Transaction recorded anyway due to force import)`,
+                        forcedImport: true
+                    };
+                } else {
+                    return {
+                        transaction: null,
+                        washSaleViolation: {
+                            type: 'insufficient_shares',
+                            message: fifoResult.error
+                        },
+                        fifoResult: fifoResult
+                    };
+                }
+            } else {
+                // Update share lots after successful sale
+                this.updateShareLotsAfterSale(fifoResult.lotSales);
+                
+                // Check if any wash sales occurred
+                const washSales = fifoResult.lotSales.filter(sale => sale.isWashSale);
+                if (washSales.length > 0) {
+                    washSaleResult = {
+                        type: 'wash_sale_violation',
+                        loss: fifoResult.totalWashSaleLoss,
+                        lotSales: washSales,
+                        message: `Wash sale detected! $${fifoResult.totalWashSaleLoss.toFixed(2)} loss disallowed across ${washSales.length} lot(s).`
+                    };
+                }
             }
         }
         
