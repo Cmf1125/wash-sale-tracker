@@ -1092,9 +1092,17 @@ function importCSV() {
                 if (confirm(message)) {
                     let importedCount = 0;
                     let skippedCount = 0;
+                    let duplicateCount = 0;
+                    let invalidCount = 0;
                     
-                    result.transactions.forEach(transaction => {
+                    console.log(`🔍 Processing ${result.transactions.length} parsed transactions...`);
+                    
+                    result.transactions.forEach((transaction, index) => {
+                        console.log(`\n📊 Transaction ${index + 1}/${result.transactions.length}:`, transaction);
+                        
                         const validation = window.brokerCSVParser.validateTransaction(transaction);
+                        console.log(`   → Validation result:`, validation);
+                        
                         if (validation.isValid) {
                             // Check for duplicates (same symbol, date, quantity, price)
                             const duplicate = window.washSaleEngine.transactions.find(t => 
@@ -1106,13 +1114,17 @@ function importCSV() {
                             );
                             
                             if (!duplicate) {
+                                console.log(`   → ✅ Adding transaction: ${transaction.type} ${transaction.quantity} ${transaction.symbol} @ $${transaction.price}`);
                                 window.washSaleEngine.addTransaction(transaction);
                                 importedCount++;
                             } else {
+                                console.log(`   → ⚠️ Skipping duplicate transaction`);
+                                duplicateCount++;
                                 skippedCount++;
                             }
                         } else {
-                            console.warn('⚠️ Skipping invalid transaction:', validation.errors);
+                            console.warn(`   → ❌ Skipping invalid transaction:`, validation.errors);
+                            invalidCount++;
                             skippedCount++;
                         }
                     });
@@ -1121,11 +1133,23 @@ function importCSV() {
                     updateSaveStatus('✅ CSV Imported');
                     
                     let resultMessage = `✅ CSV Import Complete!\n\n`;
-                    resultMessage += `📊 Imported: ${importedCount} transactions\n`;
-                    if (skippedCount > 0) {
-                        resultMessage += `⚠️ Skipped: ${skippedCount} (duplicates or invalid)\n`;
+                    resultMessage += `📊 Total found in CSV: ${result.transactions.length}\n`;
+                    resultMessage += `✅ Imported: ${importedCount} transactions\n`;
+                    if (duplicateCount > 0) {
+                        resultMessage += `⚠️ Duplicates: ${duplicateCount} (already existed)\n`;
                     }
-                    resultMessage += `\n🔍 Check Portfolio and History tabs to review your data.`;
+                    if (invalidCount > 0) {
+                        resultMessage += `❌ Invalid: ${invalidCount} (check console for details)\n`;
+                    }
+                    resultMessage += `\n🔍 Check console log for detailed import analysis.`;
+                    resultMessage += `\n📈 Review Portfolio and History tabs to verify your data.`;
+                    
+                    console.log(`\n📈 IMPORT SUMMARY:`);
+                    console.log(`   Total in CSV: ${result.transactions.length}`);
+                    console.log(`   ✅ Imported: ${importedCount}`);
+                    console.log(`   ⚠️ Duplicates: ${duplicateCount}`);
+                    console.log(`   ❌ Invalid: ${invalidCount}`);
+                    console.log(`   📊 Total skipped: ${skippedCount}`);
                     
                     alert(resultMessage);
                 } else {

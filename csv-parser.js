@@ -24,27 +24,45 @@ class BrokerCSVParser {
      */
     parseCSV(csvText) {
         const lines = csvText.trim().split('\n');
+        console.log(`📊 CSV has ${lines.length} lines total`);
+        
         if (lines.length < 2) {
             throw new Error('CSV file must have at least a header and one data row');
         }
 
         const header = lines[0].toLowerCase();
-        const brokerType = this.detectBrokerFormat(header);
+        console.log(`📋 CSV Header:`, header);
         
+        const brokerType = this.detectBrokerFormat(header);
         console.log(`🔍 Detected broker format: ${this.supportedBrokers[brokerType]}`);
 
         const transactions = [];
+        let processedLines = 0;
+        let skippedLines = 0;
         
         for (let i = 1; i < lines.length; i++) {
+            processedLines++;
+            console.log(`\n🔍 Processing line ${i + 1}/${lines.length}: "${lines[i]}"`);
+            
             try {
                 const transaction = this.parseLine(lines[i], brokerType, header);
                 if (transaction) {
                     transactions.push(transaction);
+                    console.log(`   ✅ Successfully parsed transaction`);
+                } else {
+                    skippedLines++;
+                    console.log(`   ⚠️ Line skipped (no transaction returned)`);
                 }
             } catch (error) {
-                console.warn(`⚠️ Failed to parse line ${i + 1}: ${error.message}`);
+                skippedLines++;
+                console.warn(`   ❌ Failed to parse line ${i + 1}: ${error.message}`);
             }
         }
+        
+        console.log(`\n📈 CSV PARSING SUMMARY:`);
+        console.log(`   📊 Lines processed: ${processedLines}`);
+        console.log(`   ✅ Transactions parsed: ${transactions.length}`);
+        console.log(`   ⚠️ Lines skipped: ${skippedLines}`);
 
         return {
             brokerType: this.supportedBrokers[brokerType],
@@ -152,16 +170,24 @@ class BrokerCSVParser {
         const data = this.createDataMap(values, headers);
         console.log('📊 Parsing Schwab line data:', data);
         
-        const action = data.action?.toLowerCase();
-        if (!action || (!action.includes('buy') && !action.includes('sell') && 
-                        !action.includes('bought') && !action.includes('sold') &&
-                        !action.includes('purchase') && !action.includes('sale'))) {
-            console.warn(`⚠️ Skipping Schwab transaction with action: "${data.action}"`);
+        const action = data.action?.toLowerCase() || '';
+        
+        // Be more flexible with action detection - include more variations
+        const isBuyAction = action.includes('buy') || action.includes('bought') || 
+                           action.includes('purchase') || action.includes('acquired') ||
+                           action.match(/^b$/) || action.includes('long');
+                           
+        const isSellAction = action.includes('sell') || action.includes('sold') || 
+                            action.includes('sale') || action.includes('disposed') ||
+                            action.match(/^s$/) || action.includes('short');
+        
+        if (!action || (!isBuyAction && !isSellAction)) {
+            console.warn(`⚠️ Skipping Schwab transaction with unrecognized action: "${data.action}"`);
             return null; // Skip non-trading transactions
         }
         
         const symbol = data.symbol?.replace(/['"]/g, '').trim();
-        if (!symbol || symbol.length > 10) {
+        if (!symbol || symbol.length > 15) { // Allow longer symbols for some international stocks
             console.warn(`⚠️ Skipping Schwab transaction - invalid symbol: "${data.symbol}"`);
             return null; // Invalid symbol
         }
@@ -191,7 +217,7 @@ class BrokerCSVParser {
         }
 
         const transaction = {
-            type: (action.includes('buy') || action.includes('bought') || action.includes('purchase')) ? 'buy' : 'sell',
+            type: isBuyAction ? 'buy' : 'sell',
             symbol: symbol.toUpperCase(),
             quantity: quantity,
             price: price,
@@ -420,7 +446,7 @@ class BrokerCSVParser {
     validateTransaction(transaction) {
         const errors = [];
         
-        if (!transaction.symbol || transaction.symbol.length > 10) {
+        if (!transaction.symbol || transaction.symbol.length > 15) {
             errors.push('Invalid or missing symbol');
         }
         
