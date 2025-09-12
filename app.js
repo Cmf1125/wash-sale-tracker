@@ -569,8 +569,8 @@ class WashSafeApp {
                         
                         totalPnL += lotPnL;
                         
-                        // Check wash sale for this lot
-                        const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL);
+                        // Check wash sale for this lot (only consider transactions up to this date)
+                        const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL, { asOfDate: new Date(transaction.date) });
                         if (washSaleInfo.isWashSale && lotPnL < 0) {
                             hasWashSale = true;
                             totalWashSaleLoss += Math.abs(lotPnL);
@@ -850,8 +850,8 @@ class WashSafeApp {
                         console.log(`   → Lot ${lot.id}: ${sharesFromThisLot} shares @ $${lot.costPerShare.toFixed(2)} → P&L: $${lotPnL.toFixed(2)}`);
                         
                         if (lotPnL < 0) {
-                            // Check if this lot creates a wash sale
-                            const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL);
+                            // Check if this lot creates a wash sale (only consider transactions up to this date)
+                            const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL, { asOfDate: new Date(transaction.date) });
                             if (washSaleInfo.isWashSale) {
                                 hasWashSales = true;
                                 transactionWashSaleLoss += Math.abs(lotPnL);

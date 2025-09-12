@@ -421,6 +421,8 @@ class WashSaleEngine {
                     ? { existingTransactions: options.existingTransactions }
                     : { asOfDate: sellDate };
                 washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl, washSaleOptions);
+            } else {
+                console.log(`   → 🚫 Skipping wash sale check for ${symbol} (CSV import mode)`);
             }
             
             const lotSale = {
@@ -724,8 +726,8 @@ class WashSaleEngine {
             const pnl = saleProceeds - costBasis;
             
             if (pnl < 0) {
-                // Check if this lot sale creates a wash sale
-                const washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl);
+                // Check if this lot sale creates a wash sale (only consider transactions up to this date)
+                const washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl, { asOfDate: sellDate });
                 if (washSaleInfo.isWashSale) {
                     hasWashSale = true;
                     totalWashSaleLoss += Math.abs(pnl);
