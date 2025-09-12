@@ -394,7 +394,7 @@ class WashSafeApp {
         if (transactions.length === 0) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                    <td colspan="8" class="px-6 py-8 text-center text-gray-500">
                         No transactions yet. Start trading to see your history.
                     </td>
                 </tr>
@@ -406,29 +406,90 @@ class WashSafeApp {
             const typeClass = transaction.type === 'buy' ? 'text-green-600' : 'text-red-600';
             const typeIcon = transaction.type === 'buy' ? '↗' : '↘';
             
-            // Check for wash sale status
-            const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+            // Create detailed calculation column
+            let calculationDetails = '<span class="text-xs text-gray-500">-</span>';
             let washSaleDisplay = '<span class="text-xs text-gray-500">-</span>';
             
-            if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
-                washSaleDisplay = `
-                    <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
-                        ⚠️ Wash Sale<br>
-                        <span class="text-xs text-red-600">-$${washSaleStatus.loss.toFixed(2)}</span>
-                    </span>
-                `;
-            } else if (transaction.type === 'sell') {
-                // For sells with no wash sale, show if it was a loss or gain
-                const costBasis = window.washSaleEngine.calculateSaleCostBasis(transaction);
-                const pnl = (transaction.price - costBasis.averageCost) * transaction.quantity;
+            if (transaction.type === 'sell') {
+                // Show detailed FIFO calculation for sells
+                const lotsAtSaleTime = window.washSaleEngine.getShareLotsAtDate(transaction.symbol, new Date(transaction.date));
                 
-                if (pnl < 0) {
-                    washSaleDisplay = `
-                        <span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                            ✅ Safe Loss<br>
-                            <span class="text-xs text-green-600">-$${Math.abs(pnl).toFixed(2)}</span>
-                        </span>
+                if (lotsAtSaleTime.length > 0) {
+                    // Simulate FIFO allocation
+                    let remainingToSell = transaction.quantity;
+                    let totalPnL = 0;
+                    let totalWashSaleLoss = 0;
+                    let hasWashSale = false;
+                    let calculationBreakdown = [];
+                    
+                    for (const lot of lotsAtSaleTime) {
+                        if (remainingToSell <= 0) break;
+                        
+                        const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                        const costBasis = lot.costPerShare * sharesFromThisLot;
+                        const saleProceeds = transaction.price * sharesFromThisLot;
+                        const lotPnL = saleProceeds - costBasis;
+                        
+                        totalPnL += lotPnL;
+                        
+                        // Check wash sale for this lot
+                        const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL);
+                        if (washSaleInfo.isWashSale && lotPnL < 0) {
+                            hasWashSale = true;
+                            totalWashSaleLoss += Math.abs(lotPnL);
+                        }
+                        
+                        calculationBreakdown.push({
+                            shares: sharesFromThisLot,
+                            costPerShare: lot.costPerShare,
+                            costBasis: costBasis,
+                            pnl: lotPnL,
+                            isWashSale: washSaleInfo.isWashSale && lotPnL < 0,
+                            purchaseDate: lot.purchaseDate
+                        });
+                        
+                        remainingToSell -= sharesFromThisLot;
+                    }
+                    
+                    // Create detailed breakdown display
+                    const breakdownText = calculationBreakdown.map(breakdown => 
+                        `${breakdown.shares}@$${breakdown.costPerShare.toFixed(2)} = $${breakdown.pnl >= 0 ? '+' : ''}${breakdown.pnl.toFixed(2)}${breakdown.isWashSale ? ' ⚠️' : ''}`
+                    ).join('<br>');
+                    
+                    calculationDetails = `
+                        <div class="text-xs">
+                            <div class="font-semibold">${breakdownText}</div>
+                            <div class="mt-1 ${totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                Total: $${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
+                            </div>
+                        </div>
                     `;
+                    
+                    // Create wash sale display
+                    if (hasWashSale) {
+                        washSaleDisplay = `
+                            <span class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                                ⚠️ Wash Sale<br>
+                                <span class="text-xs text-red-600">-$${totalWashSaleLoss.toFixed(2)}</span>
+                            </span>
+                        `;
+                    } else if (totalPnL < 0) {
+                        washSaleDisplay = `
+                            <span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                                ✅ Safe Loss<br>
+                                <span class="text-xs text-green-600">-$${Math.abs(totalPnL).toFixed(2)}</span>
+                            </span>
+                        `;
+                    } else if (totalPnL > 0) {
+                        washSaleDisplay = `
+                            <span class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                                📈 Gain<br>
+                                <span class="text-xs text-blue-600">+$${totalPnL.toFixed(2)}</span>
+                            </span>
+                        `;
+                    }
+                } else {
+                    calculationDetails = '<span class="text-xs text-red-500">No lots available</span>';
                 }
             }
             
@@ -440,6 +501,9 @@ class WashSafeApp {
                     <td class="px-6 py-4">${transaction.quantity}</td>
                     <td class="px-6 py-4">$${transaction.price.toFixed(2)}</td>
                     <td class="px-6 py-4">$${transaction.total.toFixed(2)}</td>
+                    <td class="px-6 py-4">
+                        ${calculationDetails}
+                    </td>
                     <td class="px-6 py-4">
                         ${washSaleDisplay}
                     </td>
