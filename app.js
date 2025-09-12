@@ -849,7 +849,7 @@ function adjustStockSplit(symbol) {
     }
 
     // Show current position info
-    const message = `Stock Split Adjustment for ${symbol}\n\nCurrent Position: ${position.shares} shares @ $${position.averageCost.toFixed(2)} avg cost\n\nExample: For a 10:1 split, enter "10" as the split ratio.\nThis will multiply your shares by 10 and divide cost per share by 10.\n\nWhat is the split ratio?`;
+    const message = `Stock Split Adjustment for ${symbol}\n\nCurrent Position: ${position.shares} shares @ $${position.averageCost.toFixed(2)} avg cost\n\nFORWARD SPLITS (more shares, lower price):\n- 10:1 split → enter "10"\n- 3:1 split → enter "3"\n- 2:1 split → enter "2"\n\nREVERSE SPLITS (fewer shares, higher price):\n- 1:10 reverse → enter "0.1"\n- 1:5 reverse → enter "0.2"\n- 1:3 reverse → enter "0.333"\n\nWhat is the split ratio?`;
     
     const splitRatio = prompt(message);
     if (!splitRatio || isNaN(splitRatio) || splitRatio <= 0) {
@@ -865,8 +865,16 @@ function adjustStockSplit(symbol) {
         return;
     }
 
-    // Confirm the adjustment
-    const confirmMessage = `Confirm Stock Split Adjustment:\n\n${symbol}\nSplit Ratio: ${splitRatio}:1\nSplit Date: ${parsedDate.toDateString()}\n\nThis will adjust all transactions and lots purchased before this date.\n\nIMPORTANT: This cannot be undone. Make sure you export your data first.\n\nProceed with adjustment?`;
+    // Determine split type and show preview
+    const ratio = parseFloat(splitRatio);
+    const splitType = ratio >= 1 ? 'Forward Split' : 'Reverse Split';
+    const shareMultiplier = ratio;
+    const priceMultiplier = 1 / ratio;
+    
+    const previewShares = Math.round(position.shares * shareMultiplier);
+    const previewPrice = position.averageCost * priceMultiplier;
+    
+    const confirmMessage = `Confirm Stock Split Adjustment:\n\n${symbol} - ${splitType}\nRatio: ${ratio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/ratio)}`}\nSplit Date: ${parsedDate.toDateString()}\n\nPREVIEW OF CHANGES:\nCurrent: ${position.shares} shares @ $${position.averageCost.toFixed(2)}\nAfter:   ${previewShares} shares @ $${previewPrice.toFixed(2)}\n\nThis will adjust all transactions and lots purchased before this date.\n\nIMPORTANT: This cannot be undone. Export your data first!\n\nProceed with adjustment?`;
     
     if (!confirm(confirmMessage)) {
         return;
@@ -876,7 +884,10 @@ function adjustStockSplit(symbol) {
         const result = window.washSaleEngine.applyStockSplit(symbol, parsedDate, parseFloat(splitRatio));
         
         if (result.success) {
-            alert(`✅ Stock Split Applied Successfully!\n\n${symbol} - ${splitRatio}:1 split on ${parsedDate.toDateString()}\n\nAdjusted:\n- ${result.lotsAffected} share lots\n- ${result.transactionsAffected} transactions\n\nPlease review your transaction history to verify the adjustments.`);
+            const successSplitType = ratio >= 1 ? 'Forward Split' : 'Reverse Split';
+            const successRatio = ratio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/ratio)}`;
+            
+            alert(`✅ ${successSplitType} Applied Successfully!\n\n${symbol} - ${successRatio} split on ${parsedDate.toDateString()}\n\nAdjusted:\n- ${result.lotsAffected} share lots\n- ${result.transactionsAffected} transactions\n\nPlease review your transaction history to verify the adjustments.`);
             
             // Refresh the UI
             window.app.updateUI();

@@ -707,7 +707,9 @@ class WashSaleEngine {
      * @param {number} splitRatio - Split ratio (e.g., 10 for 10:1 split)
      */
     applyStockSplit(symbol, splitDate, splitRatio) {
-        console.log(`🔄 Applying ${splitRatio}:1 stock split for ${symbol} on ${splitDate.toDateString()}`);
+        const splitType = splitRatio >= 1 ? 'forward' : 'reverse';
+        const displayRatio = splitRatio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/splitRatio)}`;
+        console.log(`🔄 Applying ${displayRatio} ${splitType} split for ${symbol} on ${splitDate.toDateString()}`);
         
         let lotsAffected = 0;
         let transactionsAffected = 0;
