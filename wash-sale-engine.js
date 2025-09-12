@@ -701,6 +701,66 @@ class WashSaleEngine {
     }
 
     /**
+     * Apply stock split adjustment to all lots and transactions for a symbol
+     * @param {string} symbol - Stock symbol (e.g., 'NVDA')
+     * @param {Date} splitDate - Date when the split occurred
+     * @param {number} splitRatio - Split ratio (e.g., 10 for 10:1 split)
+     */
+    applyStockSplit(symbol, splitDate, splitRatio) {
+        console.log(`🔄 Applying ${splitRatio}:1 stock split for ${symbol} on ${splitDate.toDateString()}`);
+        
+        let lotsAffected = 0;
+        let transactionsAffected = 0;
+        
+        // Adjust share lots purchased before the split date
+        this.shareLots.forEach(lot => {
+            if (lot.symbol === symbol && new Date(lot.purchaseDate) < splitDate) {
+                console.log(`   → Adjusting lot ${lot.id}: ${lot.originalQuantity}@$${lot.costPerShare.toFixed(2)} → ${lot.originalQuantity * splitRatio}@$${(lot.costPerShare / splitRatio).toFixed(2)}`);
+                
+                // Adjust quantities
+                lot.originalQuantity *= splitRatio;
+                lot.remainingQuantity *= splitRatio;
+                
+                // Adjust cost per share (divide by split ratio)
+                lot.costPerShare /= splitRatio;
+                
+                lotsAffected++;
+            }
+        });
+        
+        // Adjust transactions that occurred before the split date
+        this.transactions.forEach(transaction => {
+            if (transaction.symbol === symbol && new Date(transaction.date) < splitDate) {
+                console.log(`   → Adjusting transaction ${transaction.id}: ${transaction.quantity}@$${transaction.price.toFixed(2)} → ${transaction.quantity * splitRatio}@$${(transaction.price / splitRatio).toFixed(2)}`);
+                
+                // Adjust quantities
+                transaction.quantity *= splitRatio;
+                
+                // Adjust price per share (divide by split ratio)
+                transaction.price /= splitRatio;
+                
+                // Recalculate total (should remain the same)
+                transaction.total = transaction.quantity * transaction.price;
+                
+                transactionsAffected++;
+            }
+        });
+        
+        // Save the changes
+        this.saveTransactions();
+        
+        console.log(`✅ Stock split applied: ${lotsAffected} lots and ${transactionsAffected} transactions adjusted`);
+        
+        return {
+            success: true,
+            lotsAffected,
+            transactionsAffected,
+            splitRatio,
+            splitDate
+        };
+    }
+
+    /**
      * Clear all data
      */
     clearAllData() {

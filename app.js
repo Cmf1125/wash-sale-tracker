@@ -331,9 +331,14 @@ class WashSafeApp {
                             </span>
                         </td>
                         <td class="px-6 py-4">
-                            <button onclick="sellPosition('${position.symbol}')" class="text-blue-600 hover:text-blue-800 text-sm">
-                                Quick Sell
-                            </button>
+                            <div class="flex gap-2">
+                                <button onclick="sellPosition('${position.symbol}')" class="text-blue-600 hover:text-blue-800 text-sm">
+                                    Quick Sell
+                                </button>
+                                <button onclick="adjustStockSplit('${position.symbol}')" class="text-purple-600 hover:text-purple-800 text-sm">
+                                    Stock Split
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -373,9 +378,14 @@ class WashSafeApp {
                             </span>
                         </td>
                         <td class="px-6 py-4">
-                            <button onclick="sellPosition('${position.symbol}')" class="text-blue-600 hover:text-blue-800 text-sm">
-                                Quick Sell
-                            </button>
+                            <div class="flex gap-2">
+                                <button onclick="sellPosition('${position.symbol}')" class="text-blue-600 hover:text-blue-800 text-sm">
+                                    Quick Sell
+                                </button>
+                                <button onclick="adjustStockSplit('${position.symbol}')" class="text-purple-600 hover:text-purple-800 text-sm">
+                                    Stock Split
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -827,6 +837,57 @@ function sellPosition(symbol) {
     
     // Trigger real-time check
     window.app.checkTradeRealTime();
+}
+
+function adjustStockSplit(symbol) {
+    const portfolio = window.washSaleEngine.getPortfolio();
+    const position = portfolio[symbol];
+    
+    if (!position) {
+        alert('Position not found');
+        return;
+    }
+
+    // Show current position info
+    const message = `Stock Split Adjustment for ${symbol}\n\nCurrent Position: ${position.shares} shares @ $${position.averageCost.toFixed(2)} avg cost\n\nExample: For a 10:1 split, enter "10" as the split ratio.\nThis will multiply your shares by 10 and divide cost per share by 10.\n\nWhat is the split ratio?`;
+    
+    const splitRatio = prompt(message);
+    if (!splitRatio || isNaN(splitRatio) || splitRatio <= 0) {
+        return;
+    }
+
+    const splitDate = prompt(`What date did the split occur? (YYYY-MM-DD format)\n\nExample: 2024-06-07 for June 7th, 2024`);
+    if (!splitDate) return;
+
+    const parsedDate = new Date(splitDate);
+    if (isNaN(parsedDate.getTime())) {
+        alert('Invalid date format. Please use YYYY-MM-DD format.');
+        return;
+    }
+
+    // Confirm the adjustment
+    const confirmMessage = `Confirm Stock Split Adjustment:\n\n${symbol}\nSplit Ratio: ${splitRatio}:1\nSplit Date: ${parsedDate.toDateString()}\n\nThis will adjust all transactions and lots purchased before this date.\n\nIMPORTANT: This cannot be undone. Make sure you export your data first.\n\nProceed with adjustment?`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+
+    try {
+        const result = window.washSaleEngine.applyStockSplit(symbol, parsedDate, parseFloat(splitRatio));
+        
+        if (result.success) {
+            alert(`✅ Stock Split Applied Successfully!\n\n${symbol} - ${splitRatio}:1 split on ${parsedDate.toDateString()}\n\nAdjusted:\n- ${result.lotsAffected} share lots\n- ${result.transactionsAffected} transactions\n\nPlease review your transaction history to verify the adjustments.`);
+            
+            // Refresh the UI
+            window.app.updateUI();
+            updateSaveStatus('✓ Stock Split Applied');
+        } else {
+            alert('❌ Stock split adjustment failed. Please try again.');
+        }
+    } catch (error) {
+        console.error('Stock split error:', error);
+        alert('❌ Error applying stock split. Please check the console for details.');
+    }
 }
 
 function exportData() {
