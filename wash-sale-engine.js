@@ -639,6 +639,8 @@ class WashSaleEngine {
         console.log(`🔍 getYTDStats: Using NEW FIFO-based calculation for ${sellTransactions.length} sell transactions`);
         
         sellTransactions.forEach(transaction => {
+            console.log(`\n🔍 YTD CALC: Processing ${transaction.symbol} sale on ${new Date(transaction.date).toDateString()}: ${transaction.quantity} shares @ $${transaction.price.toFixed(2)}`);
+            
             // Use FIFO-based calculation for consistency with yearly summary
             const lotsAtSaleTime = this.getShareLotsAtDate(transaction.symbol, new Date(transaction.date));
             
@@ -661,6 +663,8 @@ class WashSaleEngine {
                 const saleProceeds = transaction.price * sharesFromThisLot;
                 const lotPnL = saleProceeds - costBasis;
                 
+                console.log(`     → Lot ${lot.id} (${lot.purchaseDate.toDateString()}): ${sharesFromThisLot} shares @ $${lot.costPerShare.toFixed(2)} → P&L: $${lotPnL.toFixed(2)}`);
+                
                 transactionTotalPnL += lotPnL;
                 
                 if (lotPnL < 0) {
@@ -675,9 +679,12 @@ class WashSaleEngine {
                 remainingToSell -= sharesFromThisLot;
             }
             
+            console.log(`     → Transaction Total P&L: $${transactionTotalPnL.toFixed(2)} (${transactionTotalPnL >= 0 ? 'GAIN' : 'LOSS'})`);
+            
             if (transactionTotalPnL >= 0) {
                 // Net gain for this transaction
                 totalGains += transactionTotalPnL;
+                console.log(`     → Added $${transactionTotalPnL.toFixed(2)} to gains. Running total: $${totalGains.toFixed(2)}`);
             } else {
                 // Net loss for this transaction
                 if (hasWashSales) {
@@ -687,8 +694,10 @@ class WashSaleEngine {
                     if (deductibleLoss > 0) {
                         totalLosses += deductibleLoss;
                     }
+                    console.log(`     → Wash sale: $${transactionWashSaleLoss.toFixed(2)} disallowed, $${deductibleLoss.toFixed(2)} deductible. Running loss total: $${totalLosses.toFixed(2)}`);
                 } else {
                     totalLosses += Math.abs(transactionTotalPnL);
+                    console.log(`     → Added $${Math.abs(transactionTotalPnL).toFixed(2)} to losses. Running total: $${totalLosses.toFixed(2)}`);
                 }
             }
         });
