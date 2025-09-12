@@ -6,6 +6,7 @@
 class WashSaleEngine {
     constructor() {
         this.transactions = this.loadTransactions();
+        this.shareLots = this.loadShareLots();
         this.washSaleViolations = [];
         console.log('🎯 WashSale Engine initialized');
     }
@@ -24,11 +25,81 @@ class WashSaleEngine {
     }
 
     /**
-     * Save transactions to localStorage
+     * Load share lots from localStorage
+     */
+    loadShareLots() {
+        try {
+            const saved = localStorage.getItem('washsafe_share_lots');
+            const lots = saved ? JSON.parse(saved) : [];
+            
+            // If no share lots exist but we have transactions, rebuild them
+            if (lots.length === 0 && this.transactions && this.transactions.length > 0) {
+                console.log('🔄 Rebuilding share lots from existing transactions...');
+                return this.rebuildShareLotsFromTransactions();
+            }
+            
+            return lots;
+        } catch (error) {
+            console.error('Error loading share lots:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Rebuild share lots from existing transactions (for migration)
+     */
+    rebuildShareLotsFromTransactions() {
+        const lots = [];
+        const sortedTransactions = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        console.log(`🔄 Rebuilding from ${sortedTransactions.length} transactions...`);
+        
+        sortedTransactions.forEach(transaction => {
+            if (transaction.type === 'buy') {
+                // Create new lot for purchase
+                const lot = this.createShareLot(transaction);
+                lots.push(lot);
+                console.log(`   → Created lot from buy: ${lot.symbol} ${lot.originalQuantity}@${lot.costPerShare}`);
+                
+            } else if (transaction.type === 'sell') {
+                // Allocate sale against existing lots using FIFO
+                const symbol = transaction.symbol;
+                const availableLots = lots
+                    .filter(lot => lot.symbol === symbol && lot.remainingQuantity > 0)
+                    .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
+                
+                let remainingToSell = transaction.quantity;
+                
+                for (const lot of availableLots) {
+                    if (remainingToSell <= 0) break;
+                    
+                    const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                    lot.remainingQuantity -= sharesFromThisLot;
+                    remainingToSell -= sharesFromThisLot;
+                    
+                    console.log(`   → Allocated ${sharesFromThisLot} shares from lot ${lot.id} for sell`);
+                }
+                
+                if (remainingToSell > 0) {
+                    console.warn(`   → Warning: ${remainingToSell} shares could not be allocated for sell transaction`);
+                }
+            }
+        });
+        
+        this.shareLots = lots;
+        this.saveTransactions(); // This will save the rebuilt lots
+        console.log(`✅ Rebuilt ${lots.length} share lots`);
+        
+        return lots;
+    }
+
+    /**
+     * Save transactions and share lots to localStorage
      */
     saveTransactions() {
         try {
             localStorage.setItem('washsafe_transactions', JSON.stringify(this.transactions));
+            localStorage.setItem('washsafe_share_lots', JSON.stringify(this.shareLots));
             localStorage.setItem('washsafe_last_updated', new Date().toISOString());
         } catch (error) {
             console.error('Error saving transactions:', error);
@@ -36,7 +107,7 @@ class WashSaleEngine {
     }
 
     /**
-     * Add a new transaction and check for wash sales
+     * Add a new transaction and check for wash sales using FIFO
      */
     addTransaction(transaction) {
         // Add unique ID and timestamp
@@ -50,8 +121,44 @@ class WashSaleEngine {
         transaction.price = parseFloat(transaction.price);
         transaction.total = transaction.quantity * transaction.price;
 
-        // Check for wash sale BEFORE adding
-        const washSaleResult = this.checkWashSale(transaction);
+        let washSaleResult = null;
+        let fifoResult = null;
+
+        if (transaction.type === 'buy') {
+            // Create a new share lot
+            const newLot = this.createShareLot(transaction);
+            this.shareLots.push(newLot);
+            console.log(`📊 Created new share lot: ${newLot.id} - ${newLot.originalQuantity} shares @ $${newLot.costPerShare}`);
+            
+        } else if (transaction.type === 'sell') {
+            // Process the sale using FIFO
+            fifoResult = this.processFifoSale(transaction);
+            
+            if (!fifoResult.success) {
+                return {
+                    transaction: null,
+                    washSaleViolation: {
+                        type: 'insufficient_shares',
+                        message: fifoResult.error
+                    },
+                    fifoResult: fifoResult
+                };
+            }
+            
+            // Update share lots after successful sale
+            this.updateShareLotsAfterSale(fifoResult.lotSales);
+            
+            // Check if any wash sales occurred
+            const washSales = fifoResult.lotSales.filter(sale => sale.isWashSale);
+            if (washSales.length > 0) {
+                washSaleResult = {
+                    type: 'wash_sale_violation',
+                    loss: fifoResult.totalWashSaleLoss,
+                    lotSales: washSales,
+                    message: `Wash sale detected! $${fifoResult.totalWashSaleLoss.toFixed(2)} loss disallowed across ${washSales.length} lot(s).`
+                };
+            }
+        }
         
         // Add the transaction
         this.transactions.push(transaction);
@@ -62,7 +169,8 @@ class WashSaleEngine {
         
         return {
             transaction,
-            washSaleViolation: washSaleResult
+            washSaleViolation: washSaleResult,
+            fifoResult: fifoResult
         };
     }
 
@@ -179,6 +287,160 @@ class WashSaleEngine {
     }
 
     /**
+     * FIFO Share Lot Management
+     */
+    
+    /**
+     * Create a new share lot from a buy transaction
+     */
+    createShareLot(buyTransaction) {
+        return {
+            id: `lot_${buyTransaction.id}`,
+            symbol: buyTransaction.symbol,
+            purchaseDate: new Date(buyTransaction.date),
+            originalQuantity: buyTransaction.quantity,
+            remainingQuantity: buyTransaction.quantity,
+            costPerShare: buyTransaction.price,
+            purchaseTransactionId: buyTransaction.id
+        };
+    }
+
+    /**
+     * Get available share lots for a symbol, ordered by FIFO (oldest first)
+     */
+    getAvailableShareLots(symbol) {
+        return this.shareLots
+            .filter(lot => lot.symbol === symbol && lot.remainingQuantity > 0)
+            .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
+    }
+
+    /**
+     * Process a sale using FIFO share lot allocation
+     * Returns detailed information about which lots were used and their P&L
+     */
+    processFifoSale(sellTransaction) {
+        const symbol = sellTransaction.symbol;
+        const sellQuantity = sellTransaction.quantity;
+        const sellPrice = sellTransaction.price;
+        const sellDate = new Date(sellTransaction.date);
+        
+        console.log(`🔍 FIFO Sale Processing: ${symbol} - ${sellQuantity} shares @ $${sellPrice}`);
+        
+        // Get available lots for this symbol (FIFO order)
+        const availableLots = this.getAvailableShareLots(symbol);
+        
+        if (availableLots.length === 0) {
+            return {
+                success: false,
+                error: 'No shares available to sell',
+                lotSales: []
+            };
+        }
+        
+        // Calculate total available shares
+        const totalAvailable = availableLots.reduce((sum, lot) => sum + lot.remainingQuantity, 0);
+        
+        if (totalAvailable < sellQuantity) {
+            return {
+                success: false,
+                error: `Insufficient shares: ${totalAvailable} available, ${sellQuantity} requested`,
+                lotSales: []
+            };
+        }
+        
+        // Allocate sale across lots using FIFO
+        const lotSales = [];
+        let remainingToSell = sellQuantity;
+        
+        for (const lot of availableLots) {
+            if (remainingToSell <= 0) break;
+            
+            const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+            const costBasis = lot.costPerShare * sharesFromThisLot;
+            const saleProceeds = sellPrice * sharesFromThisLot;
+            const pnl = saleProceeds - costBasis;
+            
+            // Check if this lot sale creates a wash sale
+            const washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl);
+            
+            const lotSale = {
+                lotId: lot.id,
+                purchaseDate: lot.purchaseDate,
+                sharesFromLot: sharesFromThisLot,
+                costPerShare: lot.costPerShare,
+                sellPrice: sellPrice,
+                costBasis: costBasis,
+                saleProceeds: saleProceeds,
+                pnl: pnl,
+                isWashSale: washSaleInfo.isWashSale,
+                washSaleDetails: washSaleInfo.details
+            };
+            
+            lotSales.push(lotSale);
+            remainingToSell -= sharesFromThisLot;
+            
+            console.log(`   → Used ${sharesFromThisLot} shares from lot ${lot.id} (${lot.purchaseDate.toDateString()})`);
+            console.log(`   → P&L: $${pnl.toFixed(2)} ${pnl >= 0 ? '(GAIN)' : '(LOSS)'} ${washSaleInfo.isWashSale ? '⚠️ WASH SALE' : ''}`);
+        }
+        
+        return {
+            success: true,
+            error: null,
+            lotSales: lotSales,
+            totalPnL: lotSales.reduce((sum, sale) => sum + sale.pnl, 0),
+            totalWashSaleLoss: lotSales.reduce((sum, sale) => 
+                sum + (sale.isWashSale && sale.pnl < 0 ? Math.abs(sale.pnl) : 0), 0)
+        };
+    }
+
+    /**
+     * Check if selling shares from a specific lot creates a wash sale
+     */
+    checkLotWashSale(lot, sharesSold, sellDate, pnl) {
+        // Only losses can be wash sales
+        if (pnl >= 0) {
+            return { isWashSale: false, details: null };
+        }
+        
+        const symbol = lot.symbol;
+        const thirtyDaysBefore = new Date(sellDate.getTime() - (30 * 24 * 60 * 60 * 1000));
+        const thirtyDaysAfter = new Date(sellDate.getTime() + (30 * 24 * 60 * 60 * 1000));
+        
+        // Look for purchases within the wash sale window
+        const conflictingPurchases = this.transactions.filter(t => {
+            if (t.symbol !== symbol || t.type !== 'buy') return false;
+            
+            const transactionDate = new Date(t.date);
+            return transactionDate >= thirtyDaysBefore && transactionDate <= thirtyDaysAfter;
+        });
+        
+        if (conflictingPurchases.length > 0) {
+            return {
+                isWashSale: true,
+                details: {
+                    disallowedLoss: Math.abs(pnl),
+                    conflictingPurchases: conflictingPurchases
+                }
+            };
+        }
+        
+        return { isWashSale: false, details: null };
+    }
+
+    /**
+     * Update share lots after a sale (reduce remaining quantities)
+     */
+    updateShareLotsAfterSale(lotSales) {
+        lotSales.forEach(lotSale => {
+            const lot = this.shareLots.find(l => l.id === lotSale.lotId);
+            if (lot) {
+                lot.remainingQuantity -= lotSale.sharesFromLot;
+                console.log(`   → Updated lot ${lot.id}: ${lot.remainingQuantity} shares remaining`);
+            }
+        });
+    }
+
+    /**
      * Calculate the cost basis of shares being sold in a specific transaction
      * This is different from calculateAverageCost as it calculates what the average cost
      * was BEFORE the sale, not after excluding it
@@ -218,48 +480,39 @@ class WashSaleEngine {
     }
 
     /**
-     * Get current portfolio positions
+     * Get current portfolio positions using FIFO share lots
      */
     getPortfolio() {
         const positions = {};
         
-        this.transactions.forEach(transaction => {
-            const symbol = transaction.symbol;
+        // Group lots by symbol
+        this.shareLots.forEach(lot => {
+            if (lot.remainingQuantity <= 0) return; // Skip fully sold lots
+            
+            const symbol = lot.symbol;
             
             if (!positions[symbol]) {
                 positions[symbol] = {
                     symbol: symbol,
                     shares: 0,
                     totalCost: 0,
-                    transactions: [],
-                    averageCost: 0
+                    averageCost: 0,
+                    lots: []
                 };
             }
-
-            positions[symbol].transactions.push(transaction);
-
-            if (transaction.type === 'buy') {
-                positions[symbol].shares += transaction.quantity;
-                positions[symbol].totalCost += transaction.total;
-            } else if (transaction.type === 'sell') {
-                const sharesBeforeSale = positions[symbol].shares;
-                positions[symbol].shares -= transaction.quantity;
-                
-                // Reduce cost proportionally (avoid division by zero)
-                if (sharesBeforeSale > 0) {
-                    const sellRatio = transaction.quantity / sharesBeforeSale;
-                    positions[symbol].totalCost -= (positions[symbol].totalCost * sellRatio);
-                }
-            }
+            
+            positions[symbol].shares += lot.remainingQuantity;
+            positions[symbol].totalCost += lot.remainingQuantity * lot.costPerShare;
+            positions[symbol].lots.push(lot);
         });
 
-        // Calculate average cost and remove zero positions
+        // Calculate average cost for each position
         Object.keys(positions).forEach(symbol => {
-            if (positions[symbol].shares <= 0) {
-                delete positions[symbol];
-            } else {
-                positions[symbol].averageCost = positions[symbol].totalCost / positions[symbol].shares;
-            }
+            const position = positions[symbol];
+            position.averageCost = position.totalCost / position.shares;
+            
+            // Sort lots by purchase date for display
+            position.lots.sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
         });
 
         return positions;
@@ -350,6 +603,7 @@ class WashSaleEngine {
     /**
      * Check if a specific transaction was involved in a wash sale
      * This is for historical analysis of existing transactions
+     * Uses FIFO-based analysis for accurate results
      */
     getTransactionWashSaleStatus(targetTransaction) {
         console.log(`🔍 Checking wash sale for ${targetTransaction.symbol} on ${new Date(targetTransaction.date).toLocaleDateString()}`);
@@ -359,45 +613,91 @@ class WashSaleEngine {
             return null; // Only sells can trigger wash sales
         }
 
+        // Try to get the FIFO sale data for this transaction
+        // We'll simulate the sale to see what lots would have been used
         const symbol = targetTransaction.symbol;
         const sellDate = new Date(targetTransaction.date);
-        const thirtyDaysBefore = new Date(sellDate.getTime() - (30 * 24 * 60 * 60 * 1000));
-        const thirtyDaysAfter = new Date(sellDate.getTime() + (30 * 24 * 60 * 60 * 1000));
-
-        // Calculate if this was a loss using the cost basis before the sale
-        const costBasis = this.calculateSaleCostBasis(targetTransaction);
-        const loss = (costBasis.averageCost - targetTransaction.price) * targetTransaction.quantity;
-
-        console.log(`   → Cost basis: $${costBasis.averageCost.toFixed(2)}, Sell price: $${targetTransaction.price.toFixed(2)}`);
-        console.log(`   → Loss calculation: $${loss.toFixed(2)}`);
-
-        if (loss <= 0) {
-            console.log(`   → No wash sale: Not a loss (profit of $${Math.abs(loss).toFixed(2)})`);
-            return null; // No loss, no wash sale
+        
+        // Get share lots as they would have been at the time of this sale
+        const lotsAtSaleTime = this.getShareLotsAtDate(symbol, sellDate);
+        
+        if (lotsAtSaleTime.length === 0) {
+            console.log(`   → No lots available at sale time`);
+            return null;
         }
-
-        // Look for purchases within 30 days before or after
-        const conflictingPurchases = this.transactions.filter(t => {
-            if (t.symbol !== symbol || t.type !== 'buy') return false;
-            if (t.id === targetTransaction.id) return false; // Don't compare with itself
+        
+        // Simulate the FIFO allocation for this transaction
+        let remainingToSell = targetTransaction.quantity;
+        let totalWashSaleLoss = 0;
+        let hasWashSale = false;
+        
+        for (const lot of lotsAtSaleTime) {
+            if (remainingToSell <= 0) break;
             
-            const transactionDate = new Date(t.date);
-            return transactionDate >= thirtyDaysBefore && transactionDate <= thirtyDaysAfter;
-        });
-
-        console.log(`   → Found ${conflictingPurchases.length} conflicting purchases within 30 days`);
-
-        if (conflictingPurchases.length > 0) {
-            console.log(`   → WASH SALE DETECTED! Loss of $${loss.toFixed(2)} disallowed`);
+            const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+            const costBasis = lot.costPerShare * sharesFromThisLot;
+            const saleProceeds = targetTransaction.price * sharesFromThisLot;
+            const pnl = saleProceeds - costBasis;
+            
+            if (pnl < 0) {
+                // Check if this lot sale creates a wash sale
+                const washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl);
+                if (washSaleInfo.isWashSale) {
+                    hasWashSale = true;
+                    totalWashSaleLoss += Math.abs(pnl);
+                }
+            }
+            
+            remainingToSell -= sharesFromThisLot;
+        }
+        
+        if (hasWashSale) {
+            console.log(`   → WASH SALE DETECTED! Loss of $${totalWashSaleLoss.toFixed(2)} disallowed`);
             return {
                 type: 'wash_sale_violation',
-                loss: loss,
-                conflictingTransactions: conflictingPurchases
+                loss: totalWashSaleLoss
             };
         }
-
-        console.log(`   → No wash sale: Loss with no conflicting purchases`);
+        
+        console.log(`   → No wash sale detected`);
         return null;
+    }
+
+    /**
+     * Get share lots as they would have been at a specific date
+     * This helps analyze historical transactions
+     */
+    getShareLotsAtDate(symbol, targetDate) {
+        // Rebuild lots up to the target date
+        const lots = [];
+        const transactionsUpToDate = this.transactions
+            .filter(t => t.symbol === symbol && new Date(t.date) < targetDate)
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        transactionsUpToDate.forEach(transaction => {
+            if (transaction.type === 'buy') {
+                const lot = this.createShareLot(transaction);
+                lots.push(lot);
+            } else if (transaction.type === 'sell') {
+                // Allocate sale against existing lots using FIFO
+                const availableLots = lots
+                    .filter(lot => lot.remainingQuantity > 0)
+                    .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
+                
+                let remainingToSell = transaction.quantity;
+                
+                for (const lot of availableLots) {
+                    if (remainingToSell <= 0) break;
+                    
+                    const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                    lot.remainingQuantity -= sharesFromThisLot;
+                    remainingToSell -= sharesFromThisLot;
+                }
+            }
+        });
+        
+        return lots.filter(lot => lot.remainingQuantity > 0)
+                  .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
     }
 
     /**
@@ -406,8 +706,10 @@ class WashSaleEngine {
     clearAllData() {
         if (confirm('Are you sure you want to delete all transaction data? This cannot be undone.')) {
             this.transactions = [];
+            this.shareLots = [];
             this.washSaleViolations = [];
             localStorage.removeItem('washsafe_transactions');
+            localStorage.removeItem('washsafe_share_lots');
             localStorage.removeItem('washsafe_last_updated');
             return true;
         }

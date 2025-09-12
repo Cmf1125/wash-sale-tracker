@@ -620,36 +620,70 @@ class WashSafeApp {
                 console.log(`📊 Year ${year}: Found ${sellTransactions.length} sell transactions out of ${yearTransactions.length} total`);
                 
                 sellTransactions.forEach(transaction => {
-                    // Calculate P&L for this sale using the cost basis method
-                    const costBasis = window.washSaleEngine.calculateSaleCostBasis(transaction);
-                    const pnl = (transaction.price - costBasis.averageCost) * transaction.quantity;
+                    console.log(`🔍 FIFO Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}`);
                     
-                    console.log(`🔍 Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}`);
-                    console.log(`   → Sale: ${transaction.quantity} @ $${transaction.price.toFixed(2)} = $${transaction.total.toFixed(2)}`);
-                    console.log(`   → Cost Basis: $${costBasis.averageCost.toFixed(2)} (from ${costBasis.availableShares} shares available before sale)`);
-                    console.log(`   → P&L: $${pnl.toFixed(2)} ${pnl >= 0 ? '(GAIN)' : '(LOSS)'}`);
+                    // Get the FIFO analysis for this transaction
+                    const lotsAtSaleTime = window.washSaleEngine.getShareLotsAtDate(transaction.symbol, new Date(transaction.date));
                     
-                    if (pnl >= 0) {
-                        // This is a gain
-                        totalGains += pnl;
-                        console.log(`   → ✅ Added $${pnl.toFixed(2)} to gains (Total gains: $${totalGains.toFixed(2)})`);
-                    } else {
-                        // This is a loss - check if it's a wash sale
-                        const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
-                        console.log(`   → 🔍 Checking wash sale status...`);
-                        console.log(`   → Result:`, washSaleStatus);
+                    if (lotsAtSaleTime.length === 0) {
+                        console.log(`   → Warning: No lots available for sale`);
+                        return;
+                    }
+                    
+                    // Simulate FIFO allocation for this transaction
+                    let remainingToSell = transaction.quantity;
+                    let transactionTotalPnL = 0;
+                    let transactionWashSaleLoss = 0;
+                    let hasWashSales = false;
+                    
+                    for (const lot of lotsAtSaleTime) {
+                        if (remainingToSell <= 0) break;
                         
-                        if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
-                            // This loss is disallowed due to wash sale
+                        const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                        const costBasis = lot.costPerShare * sharesFromThisLot;
+                        const saleProceeds = transaction.price * sharesFromThisLot;
+                        const lotPnL = saleProceeds - costBasis;
+                        
+                        transactionTotalPnL += lotPnL;
+                        
+                        console.log(`   → Lot ${lot.id}: ${sharesFromThisLot} shares @ $${lot.costPerShare.toFixed(2)} → P&L: $${lotPnL.toFixed(2)}`);
+                        
+                        if (lotPnL < 0) {
+                            // Check if this lot creates a wash sale
+                            const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL);
+                            if (washSaleInfo.isWashSale) {
+                                hasWashSales = true;
+                                transactionWashSaleLoss += Math.abs(lotPnL);
+                                console.log(`   → ⚠️ Wash sale on this lot: $${Math.abs(lotPnL).toFixed(2)}`);
+                            }
+                        }
+                        
+                        remainingToSell -= sharesFromThisLot;
+                    }
+                    
+                    console.log(`   → Transaction Total P&L: $${transactionTotalPnL.toFixed(2)}`);
+                    
+                    if (transactionTotalPnL >= 0) {
+                        // Net gain for this transaction
+                        totalGains += transactionTotalPnL;
+                        console.log(`   → ✅ Added $${transactionTotalPnL.toFixed(2)} to gains`);
+                    } else {
+                        // Net loss for this transaction
+                        if (hasWashSales) {
                             washSaleViolations++;
-                            disallowedLosses += Math.abs(pnl);
-                            console.log(`   → ⚠️ WASH SALE! Count: ${washSaleViolations}, Disallowed: $${Math.abs(pnl).toFixed(2)} (Total disallowed: $${disallowedLosses.toFixed(2)})`);
+                            disallowedLosses += transactionWashSaleLoss;
+                            // Only the non-wash-sale portion counts as deductible loss
+                            const deductibleLoss = Math.abs(transactionTotalPnL) - transactionWashSaleLoss;
+                            if (deductibleLoss > 0) {
+                                totalLosses += deductibleLoss;
+                            }
+                            console.log(`   → ⚠️ Partial wash sale: $${transactionWashSaleLoss.toFixed(2)} disallowed, $${deductibleLoss.toFixed(2)} deductible`);
                         } else {
-                            // This is a valid tax loss
-                            totalLosses += Math.abs(pnl);
-                            console.log(`   → ❌ Valid tax loss: $${Math.abs(pnl).toFixed(2)} (Total losses: $${totalLosses.toFixed(2)})`);
+                            totalLosses += Math.abs(transactionTotalPnL);
+                            console.log(`   → ❌ Valid tax loss: $${Math.abs(transactionTotalPnL).toFixed(2)}`);
                         }
                     }
+                    
                     console.log(`   → Running totals: Gains $${totalGains.toFixed(2)}, Losses $${totalLosses.toFixed(2)}, Wash Sales ${washSaleViolations}, Disallowed $${disallowedLosses.toFixed(2)}`);
                 });
 
