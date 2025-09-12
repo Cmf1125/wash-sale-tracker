@@ -134,8 +134,9 @@ class WashSaleEngine {
             console.log(`📊 Created new share lot: ${newLot.id} - ${newLot.originalQuantity} shares @ $${newLot.costPerShare}`);
             
         } else if (transaction.type === 'sell') {
-            // Process the sale using FIFO
-            fifoResult = this.processFifoSale(transaction);
+            // Process the sale using FIFO with allowPartial option during force imports
+            const processingOptions = options.forceImport ? { allowPartial: true } : {};
+            fifoResult = this.processFifoSale(transaction, processingOptions);
             
             if (!fifoResult.success) {
                 if (options.forceImport) {
@@ -157,11 +158,13 @@ class WashSaleEngine {
                     };
                 }
             } else {
-                // Update share lots after successful sale
-                this.updateShareLotsAfterSale(fifoResult.lotSales);
+                // Update share lots after successful sale (even if partial)
+                if (fifoResult.lotSales && fifoResult.lotSales.length > 0) {
+                    this.updateShareLotsAfterSale(fifoResult.lotSales);
+                }
                 
                 // Check if any wash sales occurred
-                const washSales = fifoResult.lotSales.filter(sale => sale.isWashSale);
+                const washSales = fifoResult.lotSales ? fifoResult.lotSales.filter(sale => sale.isWashSale) : [];
                 if (washSales.length > 0) {
                     washSaleResult = {
                         type: 'wash_sale_violation',
@@ -169,6 +172,19 @@ class WashSaleEngine {
                         lotSales: washSales,
                         message: `Wash sale detected! $${fifoResult.totalWashSaleLoss.toFixed(2)} loss disallowed across ${washSales.length} lot(s).`
                     };
+                }
+                
+                // Note if this was a partial processing
+                if (fifoResult.partialProcessing) {
+                    if (washSaleResult) {
+                        washSaleResult.message += ` (Partial processing: ${fifoResult.shortfall} shares could not be allocated)`;
+                    } else {
+                        washSaleResult = {
+                            type: 'partial_processing',
+                            message: `Sale processed partially: ${fifoResult.shortfall} shares could not be allocated to existing lots`,
+                            shortfall: fifoResult.shortfall
+                        };
+                    }
                 }
             }
         }
@@ -330,8 +346,11 @@ class WashSaleEngine {
     /**
      * Process a sale using FIFO share lot allocation
      * Returns detailed information about which lots were used and their P&L
+     * @param {Object} sellTransaction - The sell transaction to process
+     * @param {Object} options - Options for processing
+     * @param {boolean} options.allowPartial - If true, allow partial processing even without sufficient shares
      */
-    processFifoSale(sellTransaction) {
+    processFifoSale(sellTransaction, options = {}) {
         const symbol = sellTransaction.symbol;
         const sellQuantity = sellTransaction.quantity;
         const sellPrice = sellTransaction.price;
@@ -343,22 +362,40 @@ class WashSaleEngine {
         const availableLots = this.getAvailableShareLots(symbol);
         
         if (availableLots.length === 0) {
-            return {
-                success: false,
-                error: 'No shares available to sell',
-                lotSales: []
-            };
+            if (options.allowPartial) {
+                console.warn(`⚠️ No shares available for ${symbol} sale, allowing partial processing`);
+                return {
+                    success: true,
+                    error: null,
+                    lotSales: [],
+                    totalPnL: 0,
+                    totalWashSaleLoss: 0,
+                    partialProcessing: true,
+                    shortfall: sellQuantity
+                };
+            } else {
+                return {
+                    success: false,
+                    error: 'No shares available to sell',
+                    lotSales: []
+                };
+            }
         }
         
         // Calculate total available shares
         const totalAvailable = availableLots.reduce((sum, lot) => sum + lot.remainingQuantity, 0);
         
         if (totalAvailable < sellQuantity) {
-            return {
-                success: false,
-                error: `Insufficient shares: ${totalAvailable} available, ${sellQuantity} requested`,
-                lotSales: []
-            };
+            if (options.allowPartial) {
+                console.warn(`⚠️ Insufficient shares for ${symbol} sale: ${totalAvailable} available, ${sellQuantity} requested. Processing partial sale.`);
+                // Continue with partial processing using available lots
+            } else {
+                return {
+                    success: false,
+                    error: `Insufficient shares: ${totalAvailable} available, ${sellQuantity} requested`,
+                    lotSales: []
+                };
+            }
         }
         
         // Allocate sale across lots using FIFO
@@ -396,7 +433,7 @@ class WashSaleEngine {
             console.log(`   → P&L: $${pnl.toFixed(2)} ${pnl >= 0 ? '(GAIN)' : '(LOSS)'} ${washSaleInfo.isWashSale ? '⚠️ WASH SALE' : ''}`);
         }
         
-        return {
+        const result = {
             success: true,
             error: null,
             lotSales: lotSales,
@@ -404,6 +441,15 @@ class WashSaleEngine {
             totalWashSaleLoss: lotSales.reduce((sum, sale) => 
                 sum + (sale.isWashSale && sale.pnl < 0 ? Math.abs(sale.pnl) : 0), 0)
         };
+        
+        // Add partial processing info if there's a shortfall
+        if (remainingToSell > 0 && options.allowPartial) {
+            result.partialProcessing = true;
+            result.shortfall = remainingToSell;
+            console.warn(`⚠️ Partial sale processing: ${remainingToSell} shares could not be allocated`);
+        }
+        
+        return result;
     }
 
     /**
