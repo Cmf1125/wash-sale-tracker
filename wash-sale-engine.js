@@ -637,19 +637,56 @@ class WashSaleEngine {
         const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
         
         sellTransactions.forEach(transaction => {
-            const costBasis = this.calculateSaleCostBasis(transaction);
-            const pnl = (transaction.price - costBasis.averageCost) * transaction.quantity;
+            // Use FIFO-based calculation for consistency with yearly summary
+            const lotsAtSaleTime = this.getShareLotsAtDate(transaction.symbol, new Date(transaction.date));
             
-            if (pnl >= 0) {
-                totalGains += pnl;
+            if (lotsAtSaleTime.length === 0) {
+                console.warn(`No lots available for ${transaction.symbol} sale on ${new Date(transaction.date).toDateString()}`);
+                return;
+            }
+            
+            // Simulate FIFO allocation for this transaction
+            let remainingToSell = transaction.quantity;
+            let transactionTotalPnL = 0;
+            let transactionWashSaleLoss = 0;
+            let hasWashSales = false;
+            
+            for (const lot of lotsAtSaleTime) {
+                if (remainingToSell <= 0) break;
+                
+                const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                const costBasis = lot.costPerShare * sharesFromThisLot;
+                const saleProceeds = transaction.price * sharesFromThisLot;
+                const lotPnL = saleProceeds - costBasis;
+                
+                transactionTotalPnL += lotPnL;
+                
+                if (lotPnL < 0) {
+                    // Check if this lot creates a wash sale (only consider transactions up to this date)
+                    const washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL, { asOfDate: new Date(transaction.date) });
+                    if (washSaleInfo.isWashSale) {
+                        hasWashSales = true;
+                        transactionWashSaleLoss += Math.abs(lotPnL);
+                    }
+                }
+                
+                remainingToSell -= sharesFromThisLot;
+            }
+            
+            if (transactionTotalPnL >= 0) {
+                // Net gain for this transaction
+                totalGains += transactionTotalPnL;
             } else {
-                // Check if this loss is subject to wash sale rules
-                const washSaleStatus = this.getTransactionWashSaleStatus(transaction);
-                if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                // Net loss for this transaction
+                if (hasWashSales) {
                     washSaleCount++;
-                    // Wash sale losses don't count toward deductible losses
+                    // Only the non-wash-sale portion counts as deductible loss
+                    const deductibleLoss = Math.abs(transactionTotalPnL) - transactionWashSaleLoss;
+                    if (deductibleLoss > 0) {
+                        totalLosses += deductibleLoss;
+                    }
                 } else {
-                    totalLosses += Math.abs(pnl);
+                    totalLosses += Math.abs(transactionTotalPnL);
                 }
             }
         });
