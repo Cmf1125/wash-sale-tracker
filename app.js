@@ -441,6 +441,7 @@ class WashSafeApp {
             symbol: filterSymbol ? filterSymbol.value.toUpperCase().trim() : ''
         };
 
+        console.log(`🔍 FILTER UPDATE: New filters:`, this.historyFilters);
         this.updateHistoryTable();
     }
 
@@ -493,6 +494,8 @@ class WashSafeApp {
      * Update transaction history table
      */
     updateHistoryTable() {
+        console.log(`🔍 TABLE UPDATE: Updating history table with filters:`, this.historyFilters);
+        
         // Populate year filter dropdown first
         this.populateYearFilter();
         
@@ -523,6 +526,8 @@ class WashSafeApp {
                 t.symbol.includes(this.historyFilters.symbol)
             );
         }
+        
+        console.log(`🔍 TABLE UPDATE: Final filtered transactions: ${transactions.length}`);
         
         const tableBody = document.getElementById('history-table');
         
