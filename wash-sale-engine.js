@@ -255,16 +255,23 @@ class WashSaleEngine {
         let totalGains = 0;
         let washSaleCount = 0;
 
-        // This is simplified - in reality you'd need to track wash sales more carefully
-        yearTransactions.forEach(transaction => {
-            if (transaction.type === 'sell') {
-                const cost = this.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
-                const pnl = (transaction.price - cost.averageCost) * transaction.quantity;
-                
-                if (pnl < 0) {
-                    totalLosses += Math.abs(pnl);
+        // Process only sell transactions
+        const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
+        
+        sellTransactions.forEach(transaction => {
+            const cost = this.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
+            const pnl = (transaction.price - cost.averageCost) * transaction.quantity;
+            
+            if (pnl >= 0) {
+                totalGains += pnl;
+            } else {
+                // Check if this loss is subject to wash sale rules
+                const washSaleStatus = this.getTransactionWashSaleStatus(transaction);
+                if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                    washSaleCount++;
+                    // Wash sale losses don't count toward deductible losses
                 } else {
-                    totalGains += pnl;
+                    totalLosses += Math.abs(pnl);
                 }
             }
         });

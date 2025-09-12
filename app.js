@@ -615,28 +615,34 @@ class WashSafeApp {
                 let washSaleViolations = 0;
                 let disallowedLosses = 0;
 
-                yearTransactions.forEach(transaction => {
-                    if (transaction.type === 'sell') {
-                        const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
-                        const pnl = (transaction.price - averageCost) * transaction.quantity;
+                // Process only sell transactions and calculate their P&L
+                const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
+                
+                sellTransactions.forEach(transaction => {
+                    // Calculate P&L for this sale
+                    const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
+                    const pnl = (transaction.price - averageCost) * transaction.quantity;
+                    
+                    console.log(`🔍 Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}, P&L: $${pnl.toFixed(2)}`);
+                    
+                    if (pnl >= 0) {
+                        // This is a gain
+                        totalGains += pnl;
+                        console.log(`   → Added $${pnl.toFixed(2)} to gains`);
+                    } else {
+                        // This is a loss - check if it's a wash sale
+                        const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
+                        console.log(`   → Wash sale check result:`, washSaleStatus ? washSaleStatus.type : 'null');
                         
-                        console.log(`🔍 Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}, P&L: $${pnl.toFixed(2)}`);
-                        
-                        if (pnl > 0) {
-                            totalGains += pnl;
-                            console.log(`   → Added $${pnl.toFixed(2)} to gains`);
+                        if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
+                            // This loss is disallowed due to wash sale
+                            washSaleViolations++;
+                            disallowedLosses += Math.abs(pnl);
+                            console.log(`   → WASH SALE! Count: ${washSaleViolations}, Disallowed: $${Math.abs(pnl).toFixed(2)}`);
                         } else {
-                            const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
-                            console.log(`   → Wash sale check result:`, washSaleStatus ? washSaleStatus.type : 'null');
-                            
-                            if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
-                                washSaleViolations++;
-                                disallowedLosses += Math.abs(pnl);
-                                console.log(`   → WASH SALE! Count: ${washSaleViolations}, Disallowed: $${Math.abs(pnl).toFixed(2)}`);
-                            } else {
-                                totalLosses += Math.abs(pnl);
-                                console.log(`   → Regular loss: $${Math.abs(pnl).toFixed(2)}`);
-                            }
+                            // This is a valid tax loss
+                            totalLosses += Math.abs(pnl);
+                            console.log(`   → Valid tax loss: $${Math.abs(pnl).toFixed(2)}`);
                         }
                     }
                 });
