@@ -179,6 +179,45 @@ class WashSaleEngine {
     }
 
     /**
+     * Calculate the cost basis of shares being sold in a specific transaction
+     * This is different from calculateAverageCost as it calculates what the average cost
+     * was BEFORE the sale, not after excluding it
+     */
+    calculateSaleCostBasis(sellTransaction) {
+        const symbol = sellTransaction.symbol;
+        const sellDate = new Date(sellTransaction.date);
+        
+        // Get all transactions for this symbol up to (but not including) the sell date
+        const priorTransactions = this.transactions
+            .filter(t => t.symbol === symbol && new Date(t.date) < sellDate)
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        let totalShares = 0;
+        let totalCost = 0;
+
+        // Build up the position chronologically
+        priorTransactions.forEach(transaction => {
+            if (transaction.type === 'buy') {
+                totalShares += transaction.quantity;
+                totalCost += transaction.total;
+            } else if (transaction.type === 'sell') {
+                if (totalShares > 0) {
+                    const sellRatio = transaction.quantity / totalShares;
+                    totalCost -= (totalCost * sellRatio);
+                    totalShares -= transaction.quantity;
+                }
+            }
+        });
+
+        // The cost basis for the sale is the average cost of shares held just before the sale
+        return {
+            averageCost: totalShares > 0 ? totalCost / totalShares : 0,
+            availableShares: totalShares,
+            totalCost: totalCost
+        };
+    }
+
+    /**
      * Get current portfolio positions
      */
     getPortfolio() {
@@ -259,8 +298,8 @@ class WashSaleEngine {
         const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
         
         sellTransactions.forEach(transaction => {
-            const cost = this.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
-            const pnl = (transaction.price - cost.averageCost) * transaction.quantity;
+            const costBasis = this.calculateSaleCostBasis(transaction);
+            const pnl = (transaction.price - costBasis.averageCost) * transaction.quantity;
             
             if (pnl >= 0) {
                 totalGains += pnl;
@@ -325,11 +364,11 @@ class WashSaleEngine {
         const thirtyDaysBefore = new Date(sellDate.getTime() - (30 * 24 * 60 * 60 * 1000));
         const thirtyDaysAfter = new Date(sellDate.getTime() + (30 * 24 * 60 * 60 * 1000));
 
-        // Calculate if this was a loss (exclude this transaction from cost basis)
-        const { averageCost } = this.calculateAverageCost(symbol, sellDate, targetTransaction.id);
-        const loss = (averageCost - targetTransaction.price) * targetTransaction.quantity;
+        // Calculate if this was a loss using the cost basis before the sale
+        const costBasis = this.calculateSaleCostBasis(targetTransaction);
+        const loss = (costBasis.averageCost - targetTransaction.price) * targetTransaction.quantity;
 
-        console.log(`   → Average cost: $${averageCost.toFixed(2)}, Sell price: $${targetTransaction.price.toFixed(2)}`);
+        console.log(`   → Cost basis: $${costBasis.averageCost.toFixed(2)}, Sell price: $${targetTransaction.price.toFixed(2)}`);
         console.log(`   → Loss calculation: $${loss.toFixed(2)}`);
 
         if (loss <= 0) {

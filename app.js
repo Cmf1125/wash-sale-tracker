@@ -419,8 +419,8 @@ class WashSafeApp {
                 `;
             } else if (transaction.type === 'sell') {
                 // For sells with no wash sale, show if it was a loss or gain
-                const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
-                const pnl = (transaction.price - averageCost) * transaction.quantity;
+                const costBasis = window.washSaleEngine.calculateSaleCostBasis(transaction);
+                const pnl = (transaction.price - costBasis.averageCost) * transaction.quantity;
                 
                 if (pnl < 0) {
                     washSaleDisplay = `
@@ -617,34 +617,40 @@ class WashSafeApp {
 
                 // Process only sell transactions and calculate their P&L
                 const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
+                console.log(`📊 Year ${year}: Found ${sellTransactions.length} sell transactions out of ${yearTransactions.length} total`);
                 
                 sellTransactions.forEach(transaction => {
-                    // Calculate P&L for this sale
-                    const { averageCost } = window.washSaleEngine.calculateAverageCost(transaction.symbol, transaction.date, transaction.id);
-                    const pnl = (transaction.price - averageCost) * transaction.quantity;
+                    // Calculate P&L for this sale using the cost basis method
+                    const costBasis = window.washSaleEngine.calculateSaleCostBasis(transaction);
+                    const pnl = (transaction.price - costBasis.averageCost) * transaction.quantity;
                     
-                    console.log(`🔍 Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}, P&L: $${pnl.toFixed(2)}`);
+                    console.log(`🔍 Yearly Summary: ${transaction.symbol} on ${new Date(transaction.date).toLocaleDateString()}`);
+                    console.log(`   → Sale: ${transaction.quantity} @ $${transaction.price.toFixed(2)} = $${transaction.total.toFixed(2)}`);
+                    console.log(`   → Cost Basis: $${costBasis.averageCost.toFixed(2)} (from ${costBasis.availableShares} shares available before sale)`);
+                    console.log(`   → P&L: $${pnl.toFixed(2)} ${pnl >= 0 ? '(GAIN)' : '(LOSS)'}`);
                     
                     if (pnl >= 0) {
                         // This is a gain
                         totalGains += pnl;
-                        console.log(`   → Added $${pnl.toFixed(2)} to gains`);
+                        console.log(`   → ✅ Added $${pnl.toFixed(2)} to gains (Total gains: $${totalGains.toFixed(2)})`);
                     } else {
                         // This is a loss - check if it's a wash sale
                         const washSaleStatus = window.washSaleEngine.getTransactionWashSaleStatus(transaction);
-                        console.log(`   → Wash sale check result:`, washSaleStatus ? washSaleStatus.type : 'null');
+                        console.log(`   → 🔍 Checking wash sale status...`);
+                        console.log(`   → Result:`, washSaleStatus);
                         
                         if (washSaleStatus && washSaleStatus.type === 'wash_sale_violation') {
                             // This loss is disallowed due to wash sale
                             washSaleViolations++;
                             disallowedLosses += Math.abs(pnl);
-                            console.log(`   → WASH SALE! Count: ${washSaleViolations}, Disallowed: $${Math.abs(pnl).toFixed(2)}`);
+                            console.log(`   → ⚠️ WASH SALE! Count: ${washSaleViolations}, Disallowed: $${Math.abs(pnl).toFixed(2)} (Total disallowed: $${disallowedLosses.toFixed(2)})`);
                         } else {
                             // This is a valid tax loss
                             totalLosses += Math.abs(pnl);
-                            console.log(`   → Valid tax loss: $${Math.abs(pnl).toFixed(2)}`);
+                            console.log(`   → ❌ Valid tax loss: $${Math.abs(pnl).toFixed(2)} (Total losses: $${totalLosses.toFixed(2)})`);
                         }
                     }
+                    console.log(`   → Running totals: Gains $${totalGains.toFixed(2)}, Losses $${totalLosses.toFixed(2)}, Wash Sales ${washSaleViolations}, Disallowed $${disallowedLosses.toFixed(2)}`);
                 });
 
                 return {
