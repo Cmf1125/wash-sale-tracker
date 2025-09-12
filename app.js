@@ -473,6 +473,9 @@ class WashSafeApp {
         const filterYear = document.getElementById('filter-year');
         if (!filterYear) return;
 
+        // Save current selection
+        const currentSelection = filterYear.value;
+
         // Get unique years from transactions
         const years = [...new Set(window.washSaleEngine.transactions.map(t => 
             new Date(t.date).getFullYear()
@@ -488,6 +491,12 @@ class WashSafeApp {
             option.textContent = year;
             filterYear.appendChild(option);
         });
+
+        // Restore previous selection
+        if (currentSelection) {
+            filterYear.value = currentSelection;
+            console.log(`🔍 DROPDOWN: Restored selection to ${currentSelection}`);
+        }
     }
 
     /**
@@ -496,8 +505,11 @@ class WashSafeApp {
     updateHistoryTable() {
         console.log(`🔍 TABLE UPDATE: Updating history table with filters:`, this.historyFilters);
         
-        // Populate year filter dropdown first
-        this.populateYearFilter();
+        // Only populate year filter if it's empty (first time)
+        const filterYear = document.getElementById('filter-year');
+        if (filterYear && filterYear.children.length <= 1) {
+            this.populateYearFilter();
+        }
         
         // Apply filters
         let transactions = window.washSaleEngine.transactions
