@@ -1052,6 +1052,112 @@ function exportData() {
     window.washSaleEngine.exportTransactions();
 }
 
+function exportCSV() {
+    console.log('📊 Generating CSV export with FIFO P&L calculations...');
+    
+    const transactions = window.washSaleEngine.transactions
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    // Create CSV headers
+    const headers = [
+        'Date',
+        'Type',
+        'Symbol',
+        'Shares',
+        'Price',
+        'Total Value',
+        'FIFO Cost Basis',
+        'FIFO P&L',
+        'Wash Sale',
+        'Notes'
+    ];
+    
+    // Process each transaction
+    const csvRows = transactions.map(transaction => {
+        let costBasis = '';
+        let pnl = '';
+        let washSale = '';
+        let notes = '';
+        
+        if (transaction.type === 'sell') {
+            // Calculate FIFO P&L for this sell transaction
+            const lotsAtSaleTime = window.washSaleEngine.getShareLotsAtDate(transaction.symbol, new Date(transaction.date));
+            
+            if (lotsAtSaleTime.length > 0) {
+                let remainingToSell = transaction.quantity;
+                let totalCostBasis = 0;
+                let totalPnL = 0;
+                let hasWashSale = false;
+                let lotDetails = [];
+                
+                for (const lot of lotsAtSaleTime) {
+                    if (remainingToSell <= 0) break;
+                    
+                    const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                    const lotCostBasis = lot.costPerShare * sharesFromThisLot;
+                    const saleProceeds = transaction.price * sharesFromThisLot;
+                    const lotPnL = saleProceeds - lotCostBasis;
+                    
+                    totalCostBasis += lotCostBasis;
+                    totalPnL += lotPnL;
+                    
+                    // Check wash sale
+                    if (lotPnL < 0) {
+                        const washSaleInfo = window.washSaleEngine.checkLotWashSale(lot, sharesFromThisLot, new Date(transaction.date), lotPnL, { asOfDate: new Date(transaction.date) });
+                        if (washSaleInfo.isWashSale) {
+                            hasWashSale = true;
+                        }
+                    }
+                    
+                    lotDetails.push(`${sharesFromThisLot}@$${lot.costPerShare.toFixed(2)}`);
+                    remainingToSell -= sharesFromThisLot;
+                }
+                
+                costBasis = `$${totalCostBasis.toFixed(2)}`;
+                pnl = `$${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}`;
+                washSale = hasWashSale ? 'YES' : 'NO';
+                notes = `FIFO: ${lotDetails.join(' + ')}`;
+            } else {
+                notes = 'No lots available for FIFO calculation';
+            }
+        } else {
+            notes = 'Purchase - creates new lot';
+        }
+        
+        return [
+            new Date(transaction.date).toLocaleDateString(),
+            transaction.type.toUpperCase(),
+            transaction.symbol,
+            transaction.quantity,
+            `$${transaction.price.toFixed(2)}`,
+            `$${transaction.total.toFixed(2)}`,
+            costBasis,
+            pnl,
+            washSale,
+            notes
+        ];
+    });
+    
+    // Convert to CSV string
+    const csvContent = [headers, ...csvRows]
+        .map(row => row.map(field => `"${field}"`).join(','))
+        .join('\n');
+    
+    // Download the file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `washsafe-transactions-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log('✅ CSV export complete!');
+}
+
 function importData() {
     const input = document.createElement('input');
     input.type = 'file';
