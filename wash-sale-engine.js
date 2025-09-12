@@ -636,6 +636,8 @@ class WashSaleEngine {
         // Process only sell transactions
         const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
         
+        console.log(`🔍 getYTDStats: Using NEW FIFO-based calculation for ${sellTransactions.length} sell transactions`);
+        
         sellTransactions.forEach(transaction => {
             // Use FIFO-based calculation for consistency with yearly summary
             const lotsAtSaleTime = this.getShareLotsAtDate(transaction.symbol, new Date(transaction.date));

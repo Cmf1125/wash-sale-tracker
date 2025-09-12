@@ -503,9 +503,11 @@ class WashSafeApp {
         // Apply year filter
         if (this.historyFilters.year) {
             const filterYear = parseInt(this.historyFilters.year);
+            console.log(`🔍 YEAR FILTER: Filtering to year ${filterYear} (was ${this.historyFilters.year})`);
             transactions = transactions.filter(t => 
                 new Date(t.date).getFullYear() === filterYear
             );
+            console.log(`🔍 YEAR FILTER: ${transactions.length} transactions match year filter`);
         }
         
         // Apply type filter
