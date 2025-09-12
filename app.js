@@ -6,6 +6,11 @@
 class WashSafeApp {
     constructor() {
         this.currentTab = 'trade';
+        this.historyFilters = {
+            year: '',
+            type: '',
+            symbol: ''
+        };
         this.init();
     }
 
@@ -223,6 +228,7 @@ class WashSafeApp {
         } else if (tabName === 'history') {
             this.updateYearlySummary();
             this.updateHistoryTable();
+            this.setupHistoryFilterListeners(); // Set up filter listeners when tab is shown
         } else if (tabName === 'alerts') {
             this.updateTaxAlerts();
         } else if (tabName === 'help') {
@@ -394,18 +400,139 @@ class WashSafeApp {
     }
 
     /**
+     * Set up filter event listeners (called when history tab is shown)
+     */
+    setupHistoryFilterListeners() {
+        const filterYear = document.getElementById('filter-year');
+        const filterType = document.getElementById('filter-type');
+        const filterSymbol = document.getElementById('filter-symbol');
+        const clearFilters = document.getElementById('clear-filters');
+
+        // Remove existing listeners to avoid duplicates
+        if (filterYear) {
+            filterYear.removeEventListener('change', this.updateHistoryFilters);
+            filterYear.addEventListener('change', () => this.updateHistoryFilters());
+        }
+        if (filterType) {
+            filterType.removeEventListener('change', this.updateHistoryFilters);
+            filterType.addEventListener('change', () => this.updateHistoryFilters());
+        }
+        if (filterSymbol) {
+            filterSymbol.removeEventListener('input', this.updateHistoryFilters);
+            filterSymbol.addEventListener('input', () => this.updateHistoryFilters());
+        }
+        if (clearFilters) {
+            clearFilters.removeEventListener('click', this.clearHistoryFilters);
+            clearFilters.addEventListener('click', () => this.clearHistoryFilters());
+        }
+    }
+
+    /**
+     * Update history filter state and refresh the table
+     */
+    updateHistoryFilters() {
+        const filterYear = document.getElementById('filter-year');
+        const filterType = document.getElementById('filter-type');
+        const filterSymbol = document.getElementById('filter-symbol');
+
+        this.historyFilters = {
+            year: filterYear ? filterYear.value : '',
+            type: filterType ? filterType.value : '',
+            symbol: filterSymbol ? filterSymbol.value.toUpperCase().trim() : ''
+        };
+
+        this.updateHistoryTable();
+    }
+
+    /**
+     * Clear all history filters
+     */
+    clearHistoryFilters() {
+        const filterYear = document.getElementById('filter-year');
+        const filterType = document.getElementById('filter-type');
+        const filterSymbol = document.getElementById('filter-symbol');
+
+        if (filterYear) filterYear.value = '';
+        if (filterType) filterType.value = '';
+        if (filterSymbol) filterSymbol.value = '';
+
+        this.historyFilters = {
+            year: '',
+            type: '',
+            symbol: ''
+        };
+
+        this.updateHistoryTable();
+    }
+
+    /**
+     * Populate year filter dropdown with available years
+     */
+    populateYearFilter() {
+        const filterYear = document.getElementById('filter-year');
+        if (!filterYear) return;
+
+        // Get unique years from transactions
+        const years = [...new Set(window.washSaleEngine.transactions.map(t => 
+            new Date(t.date).getFullYear()
+        ))].sort((a, b) => b - a); // Most recent first
+
+        // Clear existing options (keep "All Years")
+        filterYear.innerHTML = '<option value="">All Years</option>';
+        
+        // Add year options
+        years.forEach(year => {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            filterYear.appendChild(option);
+        });
+    }
+
+    /**
      * Update transaction history table
      */
     updateHistoryTable() {
-        const transactions = window.washSaleEngine.transactions
+        // Populate year filter dropdown first
+        this.populateYearFilter();
+        
+        // Apply filters
+        let transactions = window.washSaleEngine.transactions
             .sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        // Apply year filter
+        if (this.historyFilters.year) {
+            transactions = transactions.filter(t => 
+                new Date(t.date).getFullYear() == this.historyFilters.year
+            );
+        }
+        
+        // Apply type filter
+        if (this.historyFilters.type) {
+            transactions = transactions.filter(t => 
+                t.type === this.historyFilters.type
+            );
+        }
+        
+        // Apply symbol filter
+        if (this.historyFilters.symbol) {
+            transactions = transactions.filter(t => 
+                t.symbol.includes(this.historyFilters.symbol)
+            );
+        }
+        
         const tableBody = document.getElementById('history-table');
         
         if (transactions.length === 0) {
+            const hasActiveFilters = this.historyFilters.year || this.historyFilters.type || this.historyFilters.symbol;
+            const emptyMessage = hasActiveFilters 
+                ? 'No transactions match the current filters. Try clearing filters or adjusting your criteria.'
+                : 'No transactions yet. Start trading to see your history.';
+                
             tableBody.innerHTML = `
                 <tr>
                     <td colspan="8" class="px-6 py-8 text-center text-gray-500">
-                        No transactions yet. Start trading to see your history.
+                        ${emptyMessage}
                     </td>
                 </tr>
             `;

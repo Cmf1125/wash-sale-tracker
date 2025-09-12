@@ -216,7 +216,24 @@
             
             <div class="bg-white rounded-lg shadow">
                 <div class="p-6 border-b">
-                    <h2 class="text-xl font-bold">Transaction History</h2>
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-xl font-bold">Transaction History</h2>
+                        <div class="flex gap-3 items-center">
+                            <select id="filter-year" class="text-sm border border-gray-300 rounded px-3 py-1">
+                                <option value="">All Years</option>
+                            </select>
+                            <select id="filter-type" class="text-sm border border-gray-300 rounded px-3 py-1">
+                                <option value="">All Types</option>
+                                <option value="buy">Buy Only</option>
+                                <option value="sell">Sell Only</option>
+                            </select>
+                            <input type="text" id="filter-symbol" placeholder="Filter by symbol..." 
+                                   class="text-sm border border-gray-300 rounded px-3 py-1 w-32">
+                            <button id="clear-filters" class="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600">
+                                Clear Filters
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
