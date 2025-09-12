@@ -135,7 +135,10 @@ class WashSaleEngine {
             
         } else if (transaction.type === 'sell') {
             // Process the sale using FIFO with allowPartial option during force imports
-            const processingOptions = options.forceImport ? { allowPartial: true } : {};
+            // Skip wash sale detection during CSV imports since we're importing historical data
+            const processingOptions = options.forceImport 
+                ? { allowPartial: true, skipWashSaleCheck: true } 
+                : {};
             fifoResult = this.processFifoSale(transaction, processingOptions);
             
             if (!fifoResult.success) {
@@ -349,6 +352,7 @@ class WashSaleEngine {
      * @param {Object} sellTransaction - The sell transaction to process
      * @param {Object} options - Options for processing
      * @param {boolean} options.allowPartial - If true, allow partial processing even without sufficient shares
+     * @param {Array} options.existingTransactions - List of transactions to check for wash sales (for CSV imports)
      */
     processFifoSale(sellTransaction, options = {}) {
         const symbol = sellTransaction.symbol;
@@ -410,8 +414,14 @@ class WashSaleEngine {
             const saleProceeds = sellPrice * sharesFromThisLot;
             const pnl = saleProceeds - costBasis;
             
-            // Check if this lot sale creates a wash sale
-            const washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl);
+            // Check if this lot sale creates a wash sale (skip during force imports of historical data)
+            let washSaleInfo = { isWashSale: false, details: null };
+            if (!options.skipWashSaleCheck) {
+                const washSaleOptions = options.existingTransactions 
+                    ? { existingTransactions: options.existingTransactions }
+                    : { asOfDate: sellDate };
+                washSaleInfo = this.checkLotWashSale(lot, sharesFromThisLot, sellDate, pnl, washSaleOptions);
+            }
             
             const lotSale = {
                 lotId: lot.id,
@@ -454,8 +464,14 @@ class WashSaleEngine {
 
     /**
      * Check if selling shares from a specific lot creates a wash sale
+     * @param {Object} lot - The lot being sold from
+     * @param {number} sharesSold - Number of shares being sold from this lot
+     * @param {Date} sellDate - Date of the sale
+     * @param {number} pnl - P&L for this lot sale
+     * @param {Object} options - Options for wash sale checking
+     * @param {Date} options.asOfDate - Only consider transactions up to this date (for historical analysis)
      */
-    checkLotWashSale(lot, sharesSold, sellDate, pnl) {
+    checkLotWashSale(lot, sharesSold, sellDate, pnl, options = {}) {
         // Only losses can be wash sales
         if (pnl >= 0) {
             return { isWashSale: false, details: null };
@@ -465,8 +481,17 @@ class WashSaleEngine {
         const thirtyDaysBefore = new Date(sellDate.getTime() - (30 * 24 * 60 * 60 * 1000));
         const thirtyDaysAfter = new Date(sellDate.getTime() + (30 * 24 * 60 * 60 * 1000));
         
+        // For historical analysis or CSV imports, only look at transactions that existed up to a certain date
+        // This prevents looking into the "future" during CSV imports
+        let transactionsToCheck = this.transactions;
+        if (options.existingTransactions) {
+            transactionsToCheck = options.existingTransactions;
+        } else if (options.asOfDate) {
+            transactionsToCheck = this.transactions.filter(t => new Date(t.date) <= options.asOfDate);
+        }
+        
         // Look for purchases within the wash sale window
-        const conflictingPurchases = this.transactions.filter(t => {
+        const conflictingPurchases = transactionsToCheck.filter(t => {
             if (t.symbol !== symbol || t.type !== 'buy') return false;
             
             const transactionDate = new Date(t.date);
