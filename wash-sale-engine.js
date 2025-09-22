@@ -7,6 +7,7 @@ class WashSaleEngine {
     constructor() {
         this.transactions = this.loadTransactions();
         this.shareLots = this.loadShareLots();
+        this.appliedSplits = this.loadAppliedSplits();
         this.washSaleViolations = [];
         console.log('🎯 WashSale Engine initialized');
     }
@@ -20,6 +21,19 @@ class WashSaleEngine {
             return saved ? JSON.parse(saved) : [];
         } catch (error) {
             console.error('Error loading transactions:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Load applied splits from localStorage
+     */
+    loadAppliedSplits() {
+        try {
+            const saved = localStorage.getItem('washsafe_applied_splits');
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            console.error('Error loading applied splits:', error);
             return [];
         }
     }
@@ -100,6 +114,7 @@ class WashSaleEngine {
         try {
             localStorage.setItem('washsafe_transactions', JSON.stringify(this.transactions));
             localStorage.setItem('washsafe_share_lots', JSON.stringify(this.shareLots));
+            localStorage.setItem('washsafe_applied_splits', JSON.stringify(this.appliedSplits));
             localStorage.setItem('washsafe_last_updated', new Date().toISOString());
         } catch (error) {
             console.error('Error saving transactions:', error);
@@ -844,6 +859,23 @@ class WashSaleEngine {
         const splitType = splitRatio >= 1 ? 'forward' : 'reverse';
         const displayRatio = splitRatio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/splitRatio)}`;
         console.log(`🔄 Applying ${displayRatio} ${splitType} split for ${symbol} on ${splitDate.toDateString()}`);
+        
+        // Check if this split has already been applied
+        const existingSplit = this.appliedSplits.find(split => 
+            split.symbol === symbol && 
+            Math.abs(new Date(split.date) - splitDate) < 24 * 60 * 60 * 1000 && // Same day
+            split.ratio === splitRatio
+        );
+        
+        if (existingSplit) {
+            console.warn(`⚠️ Split already applied: ${symbol} ${displayRatio} split on ${splitDate.toDateString()}`);
+            return {
+                success: false,
+                error: `This split has already been applied on ${new Date(existingSplit.appliedAt).toLocaleDateString()}`,
+                duplicate: true
+            };
+        }
+        
         console.log(`🔍 Split date object:`, splitDate);
         console.log(`🔍 Split date type:`, typeof splitDate);
         console.log(`🔍 Split date timestamp:`, splitDate.getTime());
@@ -891,6 +923,20 @@ class WashSaleEngine {
             }
         });
         
+        // Record the applied split
+        const splitRecord = {
+            symbol: symbol,
+            date: splitDate.toISOString(),
+            ratio: splitRatio,
+            type: splitType,
+            displayRatio: displayRatio,
+            appliedAt: new Date().toISOString(),
+            lotsAffected: lotsAffected,
+            transactionsAffected: transactionsAffected
+        };
+        
+        this.appliedSplits.push(splitRecord);
+        
         // Save the changes
         this.saveTransactions();
         
@@ -901,7 +947,8 @@ class WashSaleEngine {
             lotsAffected,
             transactionsAffected,
             splitRatio,
-            splitDate
+            splitDate,
+            splitRecord
         };
     }
 
@@ -912,9 +959,11 @@ class WashSaleEngine {
         if (confirm('Are you sure you want to delete all transaction data? This cannot be undone.')) {
             this.transactions = [];
             this.shareLots = [];
+            this.appliedSplits = [];
             this.washSaleViolations = [];
             localStorage.removeItem('washsafe_transactions');
             localStorage.removeItem('washsafe_share_lots');
+            localStorage.removeItem('washsafe_applied_splits');
             localStorage.removeItem('washsafe_last_updated');
             return true;
         }

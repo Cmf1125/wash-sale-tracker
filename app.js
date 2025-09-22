@@ -241,7 +241,11 @@ class WashSafeApp {
      */
     async updatePortfolioTable() {
         const portfolio = window.washSaleEngine.getPortfolio();
+        const appliedSplits = window.washSaleEngine.appliedSplits;
         const tableBody = document.getElementById('portfolio-table');
+        
+        // Update applied splits section
+        this.updateAppliedSplitsDisplay(appliedSplits);
         
         if (Object.keys(portfolio).length === 0) {
             tableBody.innerHTML = `
@@ -397,6 +401,46 @@ class WashSafeApp {
                 `;
             }).join('');
         }
+    }
+
+    /**
+     * Update the applied splits display
+     */
+    updateAppliedSplitsDisplay(appliedSplits) {
+        const splitsSection = document.getElementById('applied-splits-section');
+        const splitsList = document.getElementById('applied-splits-list');
+        
+        if (!splitsSection || !splitsList) return;
+        
+        if (appliedSplits.length === 0) {
+            splitsSection.classList.add('hidden');
+            return;
+        }
+        
+        splitsSection.classList.remove('hidden');
+        
+        splitsList.innerHTML = appliedSplits.map(split => {
+            const splitDate = new Date(split.date).toLocaleDateString();
+            const appliedDate = new Date(split.appliedAt).toLocaleDateString();
+            
+            return `
+                <div class="flex items-center justify-between bg-white rounded p-3 mb-2 border border-blue-200">
+                    <div class="flex items-center">
+                        <span class="font-medium text-blue-900">${split.symbol}</span>
+                        <span class="mx-2 text-blue-600">${split.displayRatio} ${split.type} split</span>
+                        <span class="text-sm text-blue-600">on ${splitDate}</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm text-blue-700">
+                            Applied: ${appliedDate}
+                        </div>
+                        <div class="text-xs text-blue-600">
+                            ${split.lotsAffected} lots, ${split.transactionsAffected} transactions
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
     /**
