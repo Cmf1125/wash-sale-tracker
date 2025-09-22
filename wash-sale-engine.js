@@ -844,6 +844,9 @@ class WashSaleEngine {
         const splitType = splitRatio >= 1 ? 'forward' : 'reverse';
         const displayRatio = splitRatio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/splitRatio)}`;
         console.log(`🔄 Applying ${displayRatio} ${splitType} split for ${symbol} on ${splitDate.toDateString()}`);
+        console.log(`🔍 Split date object:`, splitDate);
+        console.log(`🔍 Split date type:`, typeof splitDate);
+        console.log(`🔍 Split date timestamp:`, splitDate.getTime());
         
         let lotsAffected = 0;
         let transactionsAffected = 0;
@@ -866,19 +869,25 @@ class WashSaleEngine {
         
         // Adjust transactions that occurred before the split date
         this.transactions.forEach(transaction => {
-            if (transaction.symbol === symbol && new Date(transaction.date) < splitDate) {
-                console.log(`   → Adjusting transaction ${transaction.id}: ${transaction.quantity}@$${transaction.price.toFixed(2)} → ${transaction.quantity * splitRatio}@$${(transaction.price / splitRatio).toFixed(2)}`);
+            if (transaction.symbol === symbol) {
+                const transactionDate = new Date(transaction.date);
+                const isBeforeSplit = transactionDate < splitDate;
+                console.log(`🔍 Checking transaction: ${transaction.symbol} on ${transactionDate.toDateString()} (${transactionDate.getTime()}) vs split ${splitDate.toDateString()} (${splitDate.getTime()}) → Before split: ${isBeforeSplit}`);
                 
-                // Adjust quantities
-                transaction.quantity *= splitRatio;
-                
-                // Adjust price per share (divide by split ratio)
-                transaction.price /= splitRatio;
-                
-                // Recalculate total (should remain the same)
-                transaction.total = transaction.quantity * transaction.price;
-                
-                transactionsAffected++;
+                if (isBeforeSplit) {
+                    console.log(`   → Adjusting transaction ${transaction.id}: ${transaction.quantity}@$${transaction.price.toFixed(2)} → ${transaction.quantity * splitRatio}@$${(transaction.price / splitRatio).toFixed(2)}`);
+                    
+                    // Adjust quantities
+                    transaction.quantity *= splitRatio;
+                    
+                    // Adjust price per share (divide by split ratio)
+                    transaction.price /= splitRatio;
+                    
+                    // Recalculate total (should remain the same)
+                    transaction.total = transaction.quantity * transaction.price;
+                    
+                    transactionsAffected++;
+                }
             }
         });
         
