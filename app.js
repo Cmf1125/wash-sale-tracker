@@ -436,6 +436,8 @@ class WashSafeApp {
             const displayRatio = isForward ? `${split.ratio}:1` : `1:${Math.round(1/split.ratio)}`;
             const splitType = isForward ? 'Forward' : 'Reverse';
             
+            console.log(`🔍 DISPLAY: Rendering split ID: "${split.id}" for ${split.symbol}`);
+            
             return `
                 <div class="flex items-center justify-between bg-gray-50 rounded p-3 mb-2 border border-gray-200">
                     <div class="flex items-center">

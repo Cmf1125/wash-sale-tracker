@@ -865,7 +865,7 @@ class WashSaleEngine {
      */
     addStockSplit(symbol, splitDate, ratio) {
         const split = {
-            id: Date.now() + Math.random(),
+            id: 'split_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             symbol: symbol.toUpperCase(),
             splitDate: new Date(splitDate),
             ratio: ratio,
