@@ -878,7 +878,9 @@ class WashSaleEngine {
         }
 
         this.stockSplits.push(split);
-        this.saveTransactions();
+        
+        // Apply the split to existing lots and transactions
+        this.applyStockSplitsToLots();
 
         console.log(`📊 Added stock split: ${symbol} ${ratio}:1 on ${split.splitDate.toDateString()}`);
         return true;
@@ -897,61 +899,143 @@ class WashSaleEngine {
     }
 
     /**
-     * Get adjusted price and quantity for display (for pre-split transactions only)
-     * Post-split transactions are shown as-is (actual traded values)
+     * Get transaction display info (splits are now applied to underlying data)
      */
     getAdjustedTransactionDisplay(transaction) {
-        const splits = this.getStockSplits(transaction.symbol);
+        // Since splits are now applied to the underlying data, just return the transaction values
+        // But indicate if this transaction has been affected by splits
+        const hasAppliedSplits = transaction.appliedSplits && transaction.appliedSplits.length > 0;
         
-        if (splits.length === 0) {
-            return {
-                price: transaction.price,
-                quantity: transaction.quantity,
-                isAdjusted: false,
-                splitInfo: null
-            };
-        }
-
-        const transactionDate = new Date(transaction.date);
-        let adjustedPrice = transaction.price;
-        let adjustedQuantity = transaction.quantity;
-        let isAdjusted = false;
-        let appliedSplits = [];
-
-        // Only apply splits that occurred AFTER this transaction
-        for (const split of splits) {
-            const splitDate = new Date(split.splitDate);
-            
-            if (splitDate > transactionDate) {
-                // This transaction happened before the split, so adjust it
-                adjustedPrice = adjustedPrice / split.ratio;
-                adjustedQuantity = adjustedQuantity * split.ratio;
-                isAdjusted = true;
-                appliedSplits.push(split);
-            }
-        }
-
         return {
-            price: adjustedPrice,
-            quantity: adjustedQuantity,
-            isAdjusted: isAdjusted,
-            splitInfo: appliedSplits.length > 0 ? appliedSplits : null
+            price: transaction.price,
+            quantity: transaction.quantity,
+            isAdjusted: hasAppliedSplits,
+            splitInfo: hasAppliedSplits ? transaction.appliedSplits : null
         };
     }
 
     /**
-     * Remove a stock split
+     * Apply stock splits to actual share lots and transactions (affects P&L calculations)
+     * This modifies the underlying data, not just display
+     */
+    applyStockSplitsToLots() {
+        console.log('🔄 Applying stock splits to share lots and transactions...');
+        
+        // Apply splits to share lots
+        this.shareLots.forEach(lot => {
+            const splits = this.getStockSplits(lot.symbol);
+            const lotDate = new Date(lot.purchaseDate);
+            
+            for (const split of splits) {
+                const splitDate = new Date(split.splitDate);
+                
+                // Only apply splits that occurred AFTER the lot was created
+                if (splitDate > lotDate && !lot.appliedSplits?.includes(split.id)) {
+                    console.log(`   → Applying ${split.ratio}:1 split to lot ${lot.id} (${lot.symbol})`);
+                    
+                    // Adjust lot quantities and prices
+                    lot.originalQuantity *= split.ratio;
+                    lot.remainingQuantity *= split.ratio;
+                    lot.costPerShare /= split.ratio;
+                    
+                    // Track which splits have been applied to this lot
+                    if (!lot.appliedSplits) lot.appliedSplits = [];
+                    lot.appliedSplits.push(split.id);
+                }
+            }
+        });
+        
+        // Apply splits to transactions (for accurate historical P&L)
+        this.transactions.forEach(transaction => {
+            const splits = this.getStockSplits(transaction.symbol);
+            const transactionDate = new Date(transaction.date);
+            
+            for (const split of splits) {
+                const splitDate = new Date(split.splitDate);
+                
+                // Only apply splits that occurred AFTER the transaction
+                if (splitDate > transactionDate && !transaction.appliedSplits?.includes(split.id)) {
+                    console.log(`   → Applying ${split.ratio}:1 split to transaction ${transaction.id} (${transaction.symbol})`);
+                    
+                    // Adjust transaction quantities and prices
+                    transaction.quantity *= split.ratio;
+                    transaction.price /= split.ratio;
+                    transaction.total = transaction.quantity * transaction.price;
+                    
+                    // Track which splits have been applied to this transaction
+                    if (!transaction.appliedSplits) transaction.appliedSplits = [];
+                    transaction.appliedSplits.push(split.id);
+                }
+            }
+        });
+        
+        this.saveTransactions();
+        console.log('✅ Stock splits applied to lots and transactions');
+    }
+
+    /**
+     * Remove a stock split and undo its effects
      */
     removeStockSplit(splitId) {
         const index = this.stockSplits.findIndex(s => s.id === splitId);
         if (index >= 0) {
             const split = this.stockSplits[index];
+            
+            // Undo the split effects on lots and transactions
+            this.undoStockSplit(splitId, split.ratio);
+            
+            // Remove the split
             this.stockSplits.splice(index, 1);
             this.saveTransactions();
             console.log(`🗑️ Removed stock split: ${split.symbol} ${split.ratio}:1 on ${new Date(split.splitDate).toDateString()}`);
             return true;
         }
         return false;
+    }
+
+    /**
+     * Undo the effects of a stock split on lots and transactions
+     */
+    undoStockSplit(splitId, ratio) {
+        console.log(`🔄 Undoing stock split effects for split ID: ${splitId}`);
+        
+        // Undo effects on share lots
+        this.shareLots.forEach(lot => {
+            if (lot.appliedSplits?.includes(splitId)) {
+                console.log(`   → Undoing split effects on lot ${lot.id}`);
+                
+                // Reverse the split adjustments
+                lot.originalQuantity /= ratio;
+                lot.remainingQuantity /= ratio;
+                lot.costPerShare *= ratio;
+                
+                // Remove split from applied splits
+                lot.appliedSplits = lot.appliedSplits.filter(id => id !== splitId);
+                if (lot.appliedSplits.length === 0) {
+                    delete lot.appliedSplits;
+                }
+            }
+        });
+        
+        // Undo effects on transactions
+        this.transactions.forEach(transaction => {
+            if (transaction.appliedSplits?.includes(splitId)) {
+                console.log(`   → Undoing split effects on transaction ${transaction.id}`);
+                
+                // Reverse the split adjustments
+                transaction.quantity /= ratio;
+                transaction.price *= ratio;
+                transaction.total = transaction.quantity * transaction.price;
+                
+                // Remove split from applied splits
+                transaction.appliedSplits = transaction.appliedSplits.filter(id => id !== splitId);
+                if (transaction.appliedSplits.length === 0) {
+                    delete transaction.appliedSplits;
+                }
+            }
+        });
+        
+        console.log('✅ Stock split effects undone');
     }
 
     /**
