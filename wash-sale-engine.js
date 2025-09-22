@@ -7,7 +7,7 @@ class WashSaleEngine {
     constructor() {
         this.transactions = this.loadTransactions();
         this.shareLots = this.loadShareLots();
-        this.appliedSplits = this.loadAppliedSplits();
+        this.stockSplits = this.loadStockSplits();
         this.washSaleViolations = [];
         console.log('🎯 WashSale Engine initialized');
     }
@@ -25,18 +25,6 @@ class WashSaleEngine {
         }
     }
 
-    /**
-     * Load applied splits from localStorage
-     */
-    loadAppliedSplits() {
-        try {
-            const saved = localStorage.getItem('washsafe_applied_splits');
-            return saved ? JSON.parse(saved) : [];
-        } catch (error) {
-            console.error('Error loading applied splits:', error);
-            return [];
-        }
-    }
 
     /**
      * Load share lots from localStorage
@@ -108,13 +96,26 @@ class WashSaleEngine {
     }
 
     /**
-     * Save transactions and share lots to localStorage
+     * Load stock splits from localStorage
+     */
+    loadStockSplits() {
+        try {
+            const saved = localStorage.getItem('washsafe_stock_splits');
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            console.error('Error loading stock splits:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Save transactions, share lots, and stock splits to localStorage
      */
     saveTransactions() {
         try {
             localStorage.setItem('washsafe_transactions', JSON.stringify(this.transactions));
             localStorage.setItem('washsafe_share_lots', JSON.stringify(this.shareLots));
-            localStorage.setItem('washsafe_applied_splits', JSON.stringify(this.appliedSplits));
+            localStorage.setItem('washsafe_stock_splits', JSON.stringify(this.stockSplits));
             localStorage.setItem('washsafe_last_updated', new Date().toISOString());
         } catch (error) {
             console.error('Error saving transactions:', error);
@@ -849,107 +850,108 @@ class WashSaleEngine {
                   .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
     }
 
+
     /**
-     * Apply stock split adjustment to all lots and transactions for a symbol
-     * @param {string} symbol - Stock symbol (e.g., 'NVDA')
-     * @param {Date} splitDate - Date when the split occurred
-     * @param {number} splitRatio - Split ratio (e.g., 10 for 10:1 split)
+     * Add a stock split - only affects pre-split transactions
+     * @param {string} symbol - Stock symbol
+     * @param {Date|string} splitDate - Date of the split
+     * @param {number} ratio - Split ratio (e.g., 10 for 10:1 split, 0.1 for 1:10 reverse split)
      */
-    applyStockSplit(symbol, splitDate, splitRatio) {
-        const splitType = splitRatio >= 1 ? 'forward' : 'reverse';
-        const displayRatio = splitRatio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/splitRatio)}`;
-        console.log(`🔄 Applying ${displayRatio} ${splitType} split for ${symbol} on ${splitDate.toDateString()}`);
-        
-        // Check if this split has already been applied
-        const existingSplit = this.appliedSplits.find(split => 
-            split.symbol === symbol && 
-            Math.abs(new Date(split.date) - splitDate) < 24 * 60 * 60 * 1000 && // Same day
-            split.ratio === splitRatio
+    addStockSplit(symbol, splitDate, ratio) {
+        const split = {
+            id: Date.now() + Math.random(),
+            symbol: symbol.toUpperCase(),
+            splitDate: new Date(splitDate),
+            ratio: ratio,
+            appliedAt: new Date()
+        };
+
+        // Check if this split already exists
+        const existingSplit = this.stockSplits.find(s => 
+            s.symbol === split.symbol && 
+            Math.abs(new Date(s.splitDate).getTime() - split.splitDate.getTime()) < 24 * 60 * 60 * 1000
         );
-        
+
         if (existingSplit) {
-            console.warn(`⚠️ Split already applied: ${symbol} ${displayRatio} split on ${splitDate.toDateString()}`);
+            console.warn(`⚠️ Split already exists for ${symbol} on ${split.splitDate.toDateString()}`);
+            return false;
+        }
+
+        this.stockSplits.push(split);
+        this.saveTransactions();
+
+        console.log(`📊 Added stock split: ${symbol} ${ratio}:1 on ${split.splitDate.toDateString()}`);
+        return true;
+    }
+
+    /**
+     * Get stock splits for a symbol
+     */
+    getStockSplits(symbol = null) {
+        if (symbol) {
+            return this.stockSplits
+                .filter(s => s.symbol === symbol.toUpperCase())
+                .sort((a, b) => new Date(a.splitDate) - new Date(b.splitDate));
+        }
+        return this.stockSplits.sort((a, b) => new Date(a.splitDate) - new Date(b.splitDate));
+    }
+
+    /**
+     * Get adjusted price and quantity for display (for pre-split transactions only)
+     * Post-split transactions are shown as-is (actual traded values)
+     */
+    getAdjustedTransactionDisplay(transaction) {
+        const splits = this.getStockSplits(transaction.symbol);
+        
+        if (splits.length === 0) {
             return {
-                success: false,
-                error: `This split has already been applied on ${new Date(existingSplit.appliedAt).toLocaleDateString()}`,
-                duplicate: true
+                price: transaction.price,
+                quantity: transaction.quantity,
+                isAdjusted: false,
+                splitInfo: null
             };
         }
-        
-        console.log(`🔍 Split date object:`, splitDate);
-        console.log(`🔍 Split date type:`, typeof splitDate);
-        console.log(`🔍 Split date timestamp:`, splitDate.getTime());
-        
-        let lotsAffected = 0;
-        let transactionsAffected = 0;
-        
-        // Adjust share lots purchased before the split date
-        this.shareLots.forEach(lot => {
-            if (lot.symbol === symbol && new Date(lot.purchaseDate) < splitDate) {
-                console.log(`   → Adjusting lot ${lot.id}: ${lot.originalQuantity}@$${lot.costPerShare.toFixed(2)} → ${lot.originalQuantity * splitRatio}@$${(lot.costPerShare / splitRatio).toFixed(2)}`);
-                
-                // Adjust quantities
-                lot.originalQuantity *= splitRatio;
-                lot.remainingQuantity *= splitRatio;
-                
-                // Adjust cost per share (divide by split ratio)
-                lot.costPerShare /= splitRatio;
-                
-                lotsAffected++;
+
+        const transactionDate = new Date(transaction.date);
+        let adjustedPrice = transaction.price;
+        let adjustedQuantity = transaction.quantity;
+        let isAdjusted = false;
+        let appliedSplits = [];
+
+        // Only apply splits that occurred AFTER this transaction
+        for (const split of splits) {
+            const splitDate = new Date(split.splitDate);
+            
+            if (splitDate > transactionDate) {
+                // This transaction happened before the split, so adjust it
+                adjustedPrice = adjustedPrice / split.ratio;
+                adjustedQuantity = adjustedQuantity * split.ratio;
+                isAdjusted = true;
+                appliedSplits.push(split);
             }
-        });
-        
-        // Adjust transactions that occurred before the split date
-        this.transactions.forEach(transaction => {
-            if (transaction.symbol === symbol) {
-                const transactionDate = new Date(transaction.date);
-                const isBeforeSplit = transactionDate < splitDate;
-                console.log(`🔍 Checking transaction: ${transaction.symbol} on ${transactionDate.toDateString()} (${transactionDate.getTime()}) vs split ${splitDate.toDateString()} (${splitDate.getTime()}) → Before split: ${isBeforeSplit}`);
-                
-                if (isBeforeSplit) {
-                    console.log(`   → Adjusting transaction ${transaction.id}: ${transaction.quantity}@$${transaction.price.toFixed(2)} → ${transaction.quantity * splitRatio}@$${(transaction.price / splitRatio).toFixed(2)}`);
-                    
-                    // Adjust quantities
-                    transaction.quantity *= splitRatio;
-                    
-                    // Adjust price per share (divide by split ratio)
-                    transaction.price /= splitRatio;
-                    
-                    // Recalculate total (should remain the same)
-                    transaction.total = transaction.quantity * transaction.price;
-                    
-                    transactionsAffected++;
-                }
-            }
-        });
-        
-        // Record the applied split
-        const splitRecord = {
-            symbol: symbol,
-            date: splitDate.toISOString(),
-            ratio: splitRatio,
-            type: splitType,
-            displayRatio: displayRatio,
-            appliedAt: new Date().toISOString(),
-            lotsAffected: lotsAffected,
-            transactionsAffected: transactionsAffected
-        };
-        
-        this.appliedSplits.push(splitRecord);
-        
-        // Save the changes
-        this.saveTransactions();
-        
-        console.log(`✅ Stock split applied: ${lotsAffected} lots and ${transactionsAffected} transactions adjusted`);
-        
+        }
+
         return {
-            success: true,
-            lotsAffected,
-            transactionsAffected,
-            splitRatio,
-            splitDate,
-            splitRecord
+            price: adjustedPrice,
+            quantity: adjustedQuantity,
+            isAdjusted: isAdjusted,
+            splitInfo: appliedSplits.length > 0 ? appliedSplits : null
         };
+    }
+
+    /**
+     * Remove a stock split
+     */
+    removeStockSplit(splitId) {
+        const index = this.stockSplits.findIndex(s => s.id === splitId);
+        if (index >= 0) {
+            const split = this.stockSplits[index];
+            this.stockSplits.splice(index, 1);
+            this.saveTransactions();
+            console.log(`🗑️ Removed stock split: ${split.symbol} ${split.ratio}:1 on ${new Date(split.splitDate).toDateString()}`);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -959,11 +961,11 @@ class WashSaleEngine {
         if (confirm('Are you sure you want to delete all transaction data? This cannot be undone.')) {
             this.transactions = [];
             this.shareLots = [];
-            this.appliedSplits = [];
+            this.stockSplits = [];
             this.washSaleViolations = [];
             localStorage.removeItem('washsafe_transactions');
             localStorage.removeItem('washsafe_share_lots');
-            localStorage.removeItem('washsafe_applied_splits');
+            localStorage.removeItem('washsafe_stock_splits');
             localStorage.removeItem('washsafe_last_updated');
             return true;
         }

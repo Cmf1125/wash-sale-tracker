@@ -241,11 +241,11 @@ class WashSafeApp {
      */
     async updatePortfolioTable() {
         const portfolio = window.washSaleEngine.getPortfolio();
-        const appliedSplits = window.washSaleEngine.appliedSplits;
+        const stockSplits = window.washSaleEngine.getStockSplits();
         const tableBody = document.getElementById('portfolio-table');
         
         // Update applied splits section
-        this.updateAppliedSplitsDisplay(appliedSplits);
+        this.updateAppliedSplitsDisplay(stockSplits);
         
         if (Object.keys(portfolio).length === 0) {
             tableBody.innerHTML = `
@@ -406,37 +406,54 @@ class WashSafeApp {
     /**
      * Update the applied splits display
      */
-    updateAppliedSplitsDisplay(appliedSplits) {
-        const splitsSection = document.getElementById('applied-splits-section');
+    updateAppliedSplitsDisplay(stockSplits) {
         const splitsList = document.getElementById('applied-splits-list');
+        const noSplitsMessage = document.getElementById('no-splits-message');
         
-        if (!splitsSection || !splitsList) return;
+        if (!splitsList) return;
         
-        if (appliedSplits.length === 0) {
-            splitsSection.classList.add('hidden');
+        if (stockSplits.length === 0) {
+            if (noSplitsMessage) {
+                noSplitsMessage.style.display = 'block';
+            }
+            splitsList.innerHTML = `
+                <div class="text-center text-gray-500 py-4" id="no-splits-message">
+                    No stock splits applied yet. Add one above to adjust historical prices.
+                </div>
+            `;
             return;
         }
         
-        splitsSection.classList.remove('hidden');
+        if (noSplitsMessage) {
+            noSplitsMessage.style.display = 'none';
+        }
         
-        splitsList.innerHTML = appliedSplits.map(split => {
-            const splitDate = new Date(split.date).toLocaleDateString();
+        splitsList.innerHTML = stockSplits.map(split => {
+            const splitDate = new Date(split.splitDate).toLocaleDateString();
             const appliedDate = new Date(split.appliedAt).toLocaleDateString();
+            const isForward = split.ratio >= 1;
+            const displayRatio = isForward ? `${split.ratio}:1` : `1:${Math.round(1/split.ratio)}`;
+            const splitType = isForward ? 'Forward' : 'Reverse';
             
             return `
-                <div class="flex items-center justify-between bg-white rounded p-3 mb-2 border border-blue-200">
+                <div class="flex items-center justify-between bg-gray-50 rounded p-3 mb-2 border border-gray-200">
                     <div class="flex items-center">
-                        <span class="font-medium text-blue-900">${split.symbol}</span>
-                        <span class="mx-2 text-blue-600">${split.displayRatio} ${split.type} split</span>
-                        <span class="text-sm text-blue-600">on ${splitDate}</span>
+                        <span class="font-medium text-gray-900">${split.symbol}</span>
+                        <span class="mx-2 text-blue-600">${displayRatio} ${splitType} Split</span>
+                        <span class="text-sm text-gray-600">on ${splitDate}</span>
                     </div>
-                    <div class="text-right">
-                        <div class="text-sm text-blue-700">
-                            Applied: ${appliedDate}
+                    <div class="flex items-center gap-3">
+                        <div class="text-right">
+                            <div class="text-sm text-gray-700">
+                                Applied: ${appliedDate}
+                            </div>
+                            <div class="text-xs text-gray-600">
+                                Affects pre-${splitDate} transactions
+                            </div>
                         </div>
-                        <div class="text-xs text-blue-600">
-                            ${split.lotsAffected} lots, ${split.transactionsAffected} transactions
-                        </div>
+                        <button onclick="removeStockSplit('${split.id}')" class="text-red-600 hover:text-red-800 text-sm">
+                            Remove
+                        </button>
                     </div>
                 </div>
             `;
@@ -607,6 +624,9 @@ class WashSafeApp {
             const typeClass = transaction.type === 'buy' ? 'text-green-600' : 'text-red-600';
             const typeIcon = transaction.type === 'buy' ? '↗' : '↘';
             
+            // Get adjusted display for split-affected transactions
+            const adjustedDisplay = window.washSaleEngine.getAdjustedTransactionDisplay(transaction);
+            
             // Create detailed calculation column
             let calculationDetails = '<span class="text-xs text-gray-500">-</span>';
             let washSaleDisplay = '<span class="text-xs text-gray-500">-</span>';
@@ -694,14 +714,27 @@ class WashSafeApp {
                 }
             }
             
+            // Format display based on split adjustments
+            const displayPrice = adjustedDisplay.isAdjusted 
+                ? `$${adjustedDisplay.price.toFixed(2)} <span class="text-xs text-blue-600">*adj</span>`
+                : `$${transaction.price.toFixed(2)}`;
+            
+            const displayQuantity = adjustedDisplay.isAdjusted 
+                ? `${adjustedDisplay.quantity} <span class="text-xs text-blue-600">*adj</span>`
+                : `${transaction.quantity}`;
+            
+            const displayTotal = adjustedDisplay.isAdjusted 
+                ? `$${(adjustedDisplay.price * adjustedDisplay.quantity).toFixed(2)} <span class="text-xs text-blue-600">*adj</span>`
+                : `$${transaction.total.toFixed(2)}`;
+            
             return `
                 <tr>
                     <td class="px-6 py-4">${new Date(transaction.date).toLocaleDateString()}</td>
                     <td class="px-6 py-4 ${typeClass}">${typeIcon} ${transaction.type.toUpperCase()}</td>
                     <td class="px-6 py-4 font-medium">${transaction.symbol}</td>
-                    <td class="px-6 py-4">${transaction.quantity}</td>
-                    <td class="px-6 py-4">$${transaction.price.toFixed(2)}</td>
-                    <td class="px-6 py-4">$${transaction.total.toFixed(2)}</td>
+                    <td class="px-6 py-4">${displayQuantity}</td>
+                    <td class="px-6 py-4">${displayPrice}</td>
+                    <td class="px-6 py-4">${displayTotal}</td>
                     <td class="px-6 py-4">
                         ${calculationDetails}
                     </td>
@@ -1031,65 +1064,10 @@ function sellPosition(symbol) {
 }
 
 function adjustStockSplit(symbol) {
-    const portfolio = window.washSaleEngine.getPortfolio();
-    const position = portfolio[symbol];
-    
-    if (!position) {
-        alert('Position not found');
-        return;
-    }
-
-    // Show current position info
-    const message = `Stock Split Adjustment for ${symbol}\n\nCurrent Position: ${position.shares} shares @ $${position.averageCost.toFixed(2)} avg cost\n\nFORWARD SPLITS (more shares, lower price):\n- 10:1 split → enter "10"\n- 3:1 split → enter "3"\n- 2:1 split → enter "2"\n\nREVERSE SPLITS (fewer shares, higher price):\n- 1:10 reverse → enter "0.1"\n- 1:5 reverse → enter "0.2"\n- 1:3 reverse → enter "0.333"\n\nWhat is the split ratio?`;
-    
-    const splitRatio = prompt(message);
-    if (!splitRatio || isNaN(splitRatio) || splitRatio <= 0) {
-        return;
-    }
-
-    const splitDate = prompt(`What date did the split occur? (YYYY-MM-DD format)\n\nExample: 2024-06-07 for June 7th, 2024`);
-    if (!splitDate) return;
-
-    const parsedDate = new Date(splitDate);
-    if (isNaN(parsedDate.getTime())) {
-        alert('Invalid date format. Please use YYYY-MM-DD format.');
-        return;
-    }
-
-    // Determine split type and show preview
-    const ratio = parseFloat(splitRatio);
-    const splitType = ratio >= 1 ? 'Forward Split' : 'Reverse Split';
-    const shareMultiplier = ratio;
-    const priceMultiplier = 1 / ratio;
-    
-    const previewShares = Math.round(position.shares * shareMultiplier);
-    const previewPrice = position.averageCost * priceMultiplier;
-    
-    const confirmMessage = `Confirm Stock Split Adjustment:\n\n${symbol} - ${splitType}\nRatio: ${ratio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/ratio)}`}\nSplit Date: ${parsedDate.toDateString()}\n\nPREVIEW OF CHANGES:\nCurrent: ${position.shares} shares @ $${position.averageCost.toFixed(2)}\nAfter:   ${previewShares} shares @ $${previewPrice.toFixed(2)}\n\nThis will adjust all transactions and lots purchased before this date.\n\nIMPORTANT: This cannot be undone. Export your data first!\n\nProceed with adjustment?`;
-    
-    if (!confirm(confirmMessage)) {
-        return;
-    }
-
-    try {
-        const result = window.washSaleEngine.applyStockSplit(symbol, parsedDate, parseFloat(splitRatio));
-        
-        if (result.success) {
-            const successSplitType = ratio >= 1 ? 'Forward Split' : 'Reverse Split';
-            const successRatio = ratio >= 1 ? `${splitRatio}:1` : `1:${Math.round(1/ratio)}`;
-            
-            alert(`✅ ${successSplitType} Applied Successfully!\n\n${symbol} - ${successRatio} split on ${parsedDate.toDateString()}\n\nAdjusted:\n- ${result.lotsAffected} share lots\n- ${result.transactionsAffected} transactions\n\nPlease review your transaction history to verify the adjustments.`);
-            
-            // Refresh the UI
-            window.app.updateUI();
-            updateSaveStatus('✓ Stock Split Applied');
-        } else {
-            alert('❌ Stock split adjustment failed. Please try again.');
-        }
-    } catch (error) {
-        console.error('Stock split error:', error);
-        alert('❌ Error applying stock split. Please check the console for details.');
-    }
+    // Switch to portfolio tab and show the split form with the symbol pre-filled
+    window.app.showTab('portfolio');
+    document.getElementById('split-symbol').value = symbol;
+    toggleSplitForm(true);
 }
 
 function exportData() {
@@ -1539,9 +1517,108 @@ function exportForAccountant() {
     updateSaveStatus('✓ Tax Report Exported for Accountant');
 }
 
+/**
+ * Stock Split Functions
+ */
+function toggleSplitForm(show = null) {
+    const formSection = document.getElementById('split-form-section');
+    const addBtn = document.getElementById('add-split-btn');
+    
+    if (show === null) {
+        // Toggle visibility
+        formSection.classList.toggle('hidden');
+    } else if (show) {
+        formSection.classList.remove('hidden');
+    } else {
+        formSection.classList.add('hidden');
+    }
+    
+    // Update button text
+    if (formSection.classList.contains('hidden')) {
+        addBtn.textContent = '+ Add Split';
+    } else {
+        addBtn.textContent = 'Hide Form';
+        // Focus on symbol input when form is shown
+        document.getElementById('split-symbol').focus();
+    }
+}
+
+function handleSplitFormSubmit(e) {
+    e.preventDefault();
+    
+    const symbol = document.getElementById('split-symbol').value.trim().toUpperCase();
+    const splitDate = document.getElementById('split-date').value;
+    const ratio = parseFloat(document.getElementById('split-ratio').value);
+    
+    if (!symbol) {
+        alert('Please enter a stock symbol');
+        return;
+    }
+    
+    if (!splitDate) {
+        alert('Please select a split date');
+        return;
+    }
+    
+    const parsedDate = new Date(splitDate);
+    if (isNaN(parsedDate.getTime())) {
+        alert('Invalid date format');
+        return;
+    }
+    
+    // Confirm the split
+    const isForward = ratio >= 1;
+    const displayRatio = isForward ? `${ratio}:1` : `1:${Math.round(1/ratio)}`;
+    const splitType = isForward ? 'Forward' : 'Reverse';
+    
+    const message = `Add ${splitType} Split?\n\n${symbol} - ${displayRatio} split on ${parsedDate.toDateString()}\n\nThis will adjust the display of all transactions that occurred BEFORE this date.\nPost-split transactions will show actual traded prices.\n\nContinue?`;
+    
+    if (!confirm(message)) {
+        return;
+    }
+    
+    const success = window.washSaleEngine.addStockSplit(symbol, parsedDate, ratio);
+    
+    if (success) {
+        alert(`✅ Stock split added successfully!\n\n${symbol} - ${displayRatio} ${splitType} Split\nDate: ${parsedDate.toDateString()}\n\nPre-split transactions will now show adjusted prices.`);
+        
+        // Reset form
+        document.getElementById('split-form').reset();
+        toggleSplitForm(false);
+        
+        // Update UI
+        window.app.updateUI();
+        updateSaveStatus('✓ Stock Split Added');
+    } else {
+        alert('❌ Failed to add stock split. It may already exist for this date.');
+    }
+}
+
+function removeStockSplit(splitId) {
+    if (!confirm('Remove this stock split?\n\nThis will restore original transaction prices for the affected period.')) {
+        return;
+    }
+    
+    const success = window.washSaleEngine.removeStockSplit(splitId);
+    
+    if (success) {
+        alert('✅ Stock split removed successfully!');
+        window.app.updateUI();
+        updateSaveStatus('✓ Stock Split Removed');
+    } else {
+        alert('❌ Failed to remove stock split.');
+    }
+}
+
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new WashSafeApp();
+    
+    // Set up split form event listener
+    const splitForm = document.getElementById('split-form');
+    if (splitForm) {
+        splitForm.addEventListener('submit', handleSplitFormSubmit);
+    }
 });
 
 console.log('✅ WashSafe App loaded');
