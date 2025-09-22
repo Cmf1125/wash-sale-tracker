@@ -1001,7 +1001,7 @@ class WashSaleEngine {
         console.log(`🗑️ ENGINE: Looking for split ID: ${splitId}`);
         console.log(`🗑️ ENGINE: Available splits:`, this.stockSplits.map(s => ({ id: s.id, symbol: s.symbol, ratio: s.ratio })));
         
-        const index = this.stockSplits.findIndex(s => s.id === splitId);
+        const index = this.stockSplits.findIndex(s => s.id == splitId || s.id === splitId);
         console.log(`🗑️ ENGINE: Found split at index: ${index}`);
         
         if (index >= 0) {
@@ -1064,6 +1064,24 @@ class WashSaleEngine {
         });
         
         console.log('✅ Stock split effects undone');
+    }
+
+    /**
+     * Clear all stock splits (for fixing old ID format issues)
+     */
+    clearAllStockSplits() {
+        if (confirm('Clear all stock splits?\n\nThis will remove all splits and restore original transaction prices.\nThis action cannot be undone.')) {
+            // Undo all split effects first
+            this.stockSplits.forEach(split => {
+                this.undoStockSplit(split.id, split.ratio);
+            });
+            
+            this.stockSplits = [];
+            this.saveTransactions();
+            console.log('🗑️ All stock splits cleared');
+            return true;
+        }
+        return false;
     }
 
     /**

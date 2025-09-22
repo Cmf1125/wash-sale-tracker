@@ -1694,6 +1694,18 @@ function removeStockSplit(splitId) {
     }
 }
 
+function clearAllSplits() {
+    console.log(`🗑️ Attempting to clear all stock splits`);
+    const success = window.washSaleEngine.clearAllStockSplits();
+    
+    if (success) {
+        alert('✅ All stock splits cleared successfully!');
+        console.log(`🗑️ Updating UI after clearing all splits`);
+        window.app.updateUI();
+        updateSaveStatus('✓ All Splits Cleared');
+    }
+}
+
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new WashSafeApp();
