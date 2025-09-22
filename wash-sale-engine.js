@@ -587,11 +587,15 @@ class WashSaleEngine {
     getPortfolio() {
         const positions = {};
         
+        console.log(`📊 PORTFOLIO CALCULATION: Processing ${this.shareLots.length} share lots`);
+        
         // Group lots by symbol
         this.shareLots.forEach(lot => {
             if (lot.remainingQuantity <= 0) return; // Skip fully sold lots
             
             const symbol = lot.symbol;
+            
+            console.log(`   → Lot ${lot.id}: ${symbol} ${lot.remainingQuantity} shares @ $${lot.costPerShare.toFixed(2)} (applied splits: ${lot.appliedSplits || 'none'})`);
             
             if (!positions[symbol]) {
                 positions[symbol] = {
@@ -612,6 +616,8 @@ class WashSaleEngine {
         Object.keys(positions).forEach(symbol => {
             const position = positions[symbol];
             position.averageCost = position.totalCost / position.shares;
+            
+            console.log(`📊 FINAL POSITION: ${symbol} - ${position.shares} shares @ $${position.averageCost.toFixed(2)} avg cost`);
             
             // Sort lots by purchase date for display
             position.lots.sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
@@ -922,25 +928,40 @@ class WashSaleEngine {
         console.log('🔄 Applying stock splits to share lots and transactions...');
         
         // Apply splits to share lots
+        console.log(`🔍 Checking ${this.shareLots.length} share lots for split applications...`);
+        
         this.shareLots.forEach(lot => {
+            console.log(`🔍 Lot ${lot.id}: ${lot.symbol}, purchased ${lot.purchaseDate}, remaining: ${lot.remainingQuantity}, cost: $${lot.costPerShare}`);
+            
             const splits = this.getStockSplits(lot.symbol);
             const lotDate = new Date(lot.purchaseDate);
             
+            console.log(`   → Found ${splits.length} splits for ${lot.symbol}`);
+            
             for (const split of splits) {
                 const splitDate = new Date(split.splitDate);
+                const isAfterLot = splitDate > lotDate;
+                const alreadyApplied = lot.appliedSplits?.includes(split.id);
+                
+                console.log(`   → Split ${split.id} (${split.ratio}:1 on ${splitDate.toDateString()}): isAfterLot=${isAfterLot}, alreadyApplied=${alreadyApplied}`);
                 
                 // Only apply splits that occurred AFTER the lot was created
-                if (splitDate > lotDate && !lot.appliedSplits?.includes(split.id)) {
-                    console.log(`   → Applying ${split.ratio}:1 split to lot ${lot.id} (${lot.symbol})`);
+                if (isAfterLot && !alreadyApplied) {
+                    console.log(`   → ✅ Applying ${split.ratio}:1 split to lot ${lot.id} (${lot.symbol})`);
+                    console.log(`   → BEFORE: ${lot.remainingQuantity} shares @ $${lot.costPerShare.toFixed(2)}`);
                     
                     // Adjust lot quantities and prices
                     lot.originalQuantity *= split.ratio;
                     lot.remainingQuantity *= split.ratio;
                     lot.costPerShare /= split.ratio;
                     
+                    console.log(`   → AFTER: ${lot.remainingQuantity} shares @ $${lot.costPerShare.toFixed(2)}`);
+                    
                     // Track which splits have been applied to this lot
                     if (!lot.appliedSplits) lot.appliedSplits = [];
                     lot.appliedSplits.push(split.id);
+                } else {
+                    console.log(`   → ⏭️ Skipping split (not applicable or already applied)`);
                 }
             }
         });
