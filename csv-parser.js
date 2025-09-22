@@ -223,7 +223,8 @@ class BrokerCSVParser {
             price: price,
             date: this.parseDate(data.date),
             fees: Math.abs(parseFloat(data['fees & comm'] || data['fees & commission'] || data.fees || data.commission || 0)),
-            source: 'Charles Schwab CSV Import'
+            source: 'Charles Schwab CSV Import',
+            account: this.extractAccountInfo(data)
         };
         
         console.log('✅ Successfully parsed Schwab transaction:', transaction);
@@ -248,7 +249,8 @@ class BrokerCSVParser {
             price: Math.abs(parseFloat(data.price || 0)),
             date: this.parseDate(data.date || data['executed at']),
             fees: Math.abs(parseFloat(data.fees || 0)),
-            source: 'Robinhood CSV Import'
+            source: 'Robinhood CSV Import',
+            account: this.extractAccountInfo(data)
         };
     }
 
@@ -391,7 +393,8 @@ class BrokerCSVParser {
             price: Math.abs(price),
             date: this.parseDate(dateStr),
             fees: Math.abs(parseFloat(data.fees || data.commission || data.comm || 0)),
-            source: 'Generic CSV Import'
+            source: 'Generic CSV Import',
+            account: this.extractAccountInfo(data)
         };
     }
 
@@ -470,6 +473,31 @@ class BrokerCSVParser {
             isValid: errors.length === 0,
             errors: errors
         };
+    }
+
+    /**
+     * Extract account information from transaction data
+     */
+    extractAccountInfo(data) {
+        // Try to find account information in various fields
+        const accountFields = ['account', 'account number', 'account #', 'acct', 'account_number'];
+        
+        for (const field of accountFields) {
+            if (data[field]) {
+                // Clean and format account number
+                let account = data[field].toString().trim();
+                // Remove common prefixes and format
+                account = account.replace(/^(account|acct|#)\s*/i, '');
+                // Mask all but last 4 digits for privacy
+                if (account.length > 4) {
+                    account = '****' + account.slice(-4);
+                }
+                return account;
+            }
+        }
+        
+        // If no account field found, create a generic identifier based on source
+        return 'Unknown';
     }
 }
 

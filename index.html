@@ -281,6 +281,9 @@
                                 <option value="buy">Buy Only</option>
                                 <option value="sell">Sell Only</option>
                             </select>
+                            <select id="filter-account" class="text-sm border border-gray-300 rounded px-3 py-1">
+                                <option value="">All Accounts</option>
+                            </select>
                             <input type="text" id="filter-symbol" placeholder="Filter by symbol..." 
                                    class="text-sm border border-gray-300 rounded px-3 py-1 w-32">
                             <button id="clear-filters" class="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600">
@@ -296,6 +299,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shares</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
@@ -305,7 +309,7 @@
                         </thead>
                         <tbody id="history-table" class="divide-y divide-gray-200">
                             <tr>
-                                <td colspan="8" class="px-6 py-8 text-center text-gray-500">
+                                <td colspan="9" class="px-6 py-8 text-center text-gray-500">
                                     No transactions yet. Start trading to see your history.
                                 </td>
                             </tr>

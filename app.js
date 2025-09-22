@@ -9,7 +9,8 @@ class WashSafeApp {
         this.historyFilters = {
             year: '',
             type: '',
-            symbol: ''
+            symbol: '',
+            account: ''
         };
         this.init();
     }
@@ -466,6 +467,7 @@ class WashSafeApp {
     setupHistoryFilterListeners() {
         const filterYear = document.getElementById('filter-year');
         const filterType = document.getElementById('filter-type');
+        const filterAccount = document.getElementById('filter-account');
         const filterSymbol = document.getElementById('filter-symbol');
         const clearFilters = document.getElementById('clear-filters');
 
@@ -477,6 +479,10 @@ class WashSafeApp {
         if (filterType) {
             filterType.removeEventListener('change', this.updateHistoryFilters);
             filterType.addEventListener('change', () => this.updateHistoryFilters());
+        }
+        if (filterAccount) {
+            filterAccount.removeEventListener('change', this.updateHistoryFilters);
+            filterAccount.addEventListener('change', () => this.updateHistoryFilters());
         }
         if (filterSymbol) {
             filterSymbol.removeEventListener('input', this.updateHistoryFilters);
@@ -494,11 +500,13 @@ class WashSafeApp {
     updateHistoryFilters() {
         const filterYear = document.getElementById('filter-year');
         const filterType = document.getElementById('filter-type');
+        const filterAccount = document.getElementById('filter-account');
         const filterSymbol = document.getElementById('filter-symbol');
 
         this.historyFilters = {
             year: filterYear ? filterYear.value : '',
             type: filterType ? filterType.value : '',
+            account: filterAccount ? filterAccount.value : '',
             symbol: filterSymbol ? filterSymbol.value.toUpperCase().trim() : ''
         };
 
@@ -512,15 +520,18 @@ class WashSafeApp {
     clearHistoryFilters() {
         const filterYear = document.getElementById('filter-year');
         const filterType = document.getElementById('filter-type');
+        const filterAccount = document.getElementById('filter-account');
         const filterSymbol = document.getElementById('filter-symbol');
 
         if (filterYear) filterYear.value = '';
         if (filterType) filterType.value = '';
+        if (filterAccount) filterAccount.value = '';
         if (filterSymbol) filterSymbol.value = '';
 
         this.historyFilters = {
             year: '',
             type: '',
+            account: '',
             symbol: ''
         };
 
@@ -561,15 +572,53 @@ class WashSafeApp {
     }
 
     /**
+     * Populate account filter dropdown with available accounts
+     */
+    populateAccountFilter() {
+        const filterAccount = document.getElementById('filter-account');
+        if (!filterAccount) return;
+
+        // Save current selection
+        const currentSelection = filterAccount.value;
+
+        // Get unique accounts from transactions
+        const accounts = [...new Set(window.washSaleEngine.transactions
+            .map(t => t.account)
+            .filter(account => account && account !== 'Unknown')
+        )].sort();
+
+        // Clear existing options (keep "All Accounts")
+        filterAccount.innerHTML = '<option value="">All Accounts</option>';
+        
+        // Add account options
+        accounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account;
+            option.textContent = account;
+            filterAccount.appendChild(option);
+        });
+
+        // Restore previous selection
+        if (currentSelection) {
+            filterAccount.value = currentSelection;
+        }
+    }
+
+    /**
      * Update transaction history table
      */
     updateHistoryTable() {
         console.log(`🔍 TABLE UPDATE: Updating history table with filters:`, this.historyFilters);
         
-        // Only populate year filter if it's empty (first time)
+        // Only populate filters if they're empty (first time)
         const filterYear = document.getElementById('filter-year');
+        const filterAccount = document.getElementById('filter-account');
+        
         if (filterYear && filterYear.children.length <= 1) {
             this.populateYearFilter();
+        }
+        if (filterAccount && filterAccount.children.length <= 1) {
+            this.populateAccountFilter();
         }
         
         // Apply filters
@@ -593,6 +642,13 @@ class WashSafeApp {
             );
         }
         
+        // Apply account filter
+        if (this.historyFilters.account) {
+            transactions = transactions.filter(t => 
+                t.account === this.historyFilters.account
+            );
+        }
+        
         // Apply symbol filter
         if (this.historyFilters.symbol) {
             transactions = transactions.filter(t => 
@@ -605,14 +661,14 @@ class WashSafeApp {
         const tableBody = document.getElementById('history-table');
         
         if (transactions.length === 0) {
-            const hasActiveFilters = this.historyFilters.year || this.historyFilters.type || this.historyFilters.symbol;
+            const hasActiveFilters = this.historyFilters.year || this.historyFilters.type || this.historyFilters.account || this.historyFilters.symbol;
             const emptyMessage = hasActiveFilters 
                 ? 'No transactions match the current filters. Try clearing filters or adjusting your criteria.'
                 : 'No transactions yet. Start trading to see your history.';
                 
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="px-6 py-8 text-center text-gray-500">
+                    <td colspan="9" class="px-6 py-8 text-center text-gray-500">
                         ${emptyMessage}
                     </td>
                 </tr>
@@ -732,6 +788,7 @@ class WashSafeApp {
                     <td class="px-6 py-4">${new Date(transaction.date).toLocaleDateString()}</td>
                     <td class="px-6 py-4 ${typeClass}">${typeIcon} ${transaction.type.toUpperCase()}</td>
                     <td class="px-6 py-4 font-medium">${transaction.symbol}</td>
+                    <td class="px-6 py-4 text-xs text-gray-600">${transaction.account || 'Unknown'}</td>
                     <td class="px-6 py-4">${displayQuantity}</td>
                     <td class="px-6 py-4">${displayPrice}</td>
                     <td class="px-6 py-4">${displayTotal}</td>
@@ -1238,6 +1295,7 @@ function importCSV() {
                 const message = `Found ${result.transactions.length} transactions from ${result.brokerType}.\n\nThis will ADD to your existing data (not replace).\n\nContinue with import?`;
                 
                 if (confirm(message)) {
+                    console.log(`🔧 Duplicate detection: DISABLED for CSV imports (all valid transactions will be imported)`);
                     let importedCount = 0;
                     let skippedCount = 0;
                     let duplicateCount = 0;
@@ -1265,54 +1323,66 @@ function importCSV() {
                     console.log(`\n🔄 Sorted ${sortedTransactions.length} transactions chronologically for FIFO processing`);
                     console.log(`📅 Date range: ${new Date(sortedTransactions[0]?.date).toDateString()} to ${new Date(sortedTransactions[sortedTransactions.length-1]?.date).toDateString()}`);
                     
+                    // Analyze accounts in this CSV
+                    const accountsInCSV = [...new Set(sortedTransactions.map(t => t.account).filter(a => a))];
+                    console.log(`🏦 Accounts detected in CSV: ${accountsInCSV.length > 0 ? accountsInCSV.join(', ') : 'None detected'}`);
+                    
+                    // Check for potential cross-account issues
+                    const symbolGroups = {};
+                    sortedTransactions.forEach(t => {
+                        if (!symbolGroups[t.symbol]) symbolGroups[t.symbol] = [];
+                        symbolGroups[t.symbol].push(t);
+                    });
+                    
+                    Object.keys(symbolGroups).forEach(symbol => {
+                        const transactions = symbolGroups[symbol];
+                        const accounts = [...new Set(transactions.map(t => t.account))];
+                        if (accounts.length > 1) {
+                            console.log(`🔍 Multi-account activity for ${symbol}: ${accounts.join(', ')}`);
+                        }
+                    });
+                    
                     sortedTransactions.forEach((transaction, index) => {
-                        console.log(`\n📊 Transaction ${index + 1}/${sortedTransactions.length} (${new Date(transaction.date).toDateString()}):`, transaction);
+                        console.log(`\n📊 Transaction ${index + 1}/${sortedTransactions.length} (${new Date(transaction.date).toDateString()}):`, {
+                            symbol: transaction.symbol,
+                            type: transaction.type,
+                            quantity: transaction.quantity,
+                            price: transaction.price,
+                            date: new Date(transaction.date),
+                            source: transaction.source,
+                            account: transaction.account
+                        });
                         
                         const validation = window.brokerCSVParser.validateTransaction(transaction);
                         console.log(`   → Validation result:`, validation);
                         
                         if (validation.isValid) {
-                            // Check for duplicates (same symbol, date, quantity, price)
-                            const duplicate = window.washSaleEngine.transactions.find(t => 
-                                t.symbol === transaction.symbol &&
-                                t.type === transaction.type &&
-                                t.quantity === transaction.quantity &&
-                                Math.abs(t.price - transaction.price) < 0.01 &&
-                                Math.abs(new Date(t.date) - transaction.date) < 24 * 60 * 60 * 1000 // Same day
-                            );
+                            console.log(`   → ✅ Adding transaction: ${transaction.type} ${transaction.quantity} ${transaction.symbol} @ $${transaction.price} on ${new Date(transaction.date).toDateString()}`);
                             
-                            if (!duplicate) {
-                                console.log(`   → ✅ Adding transaction: ${transaction.type} ${transaction.quantity} ${transaction.symbol} @ $${transaction.price} on ${new Date(transaction.date).toDateString()}`);
+                            try {
+                                // Use force import mode for CSV imports to ensure all valid transactions are recorded
+                                const addResult = window.washSaleEngine.addTransaction(transaction, { forceImport: true });
                                 
-                                try {
-                                    // Use force import mode for CSV imports to ensure all valid transactions are recorded
-                                    const addResult = window.washSaleEngine.addTransaction(transaction, { forceImport: true });
+                                if (addResult && addResult.transaction) {
+                                    importedCount++;
+                                    console.log(`   → ✅ Successfully imported to engine`);
                                     
-                                    if (addResult && addResult.transaction) {
-                                        importedCount++;
-                                        console.log(`   → ✅ Successfully imported to engine`);
-                                        
-                                        if (addResult.washSaleViolation) {
-                                            if (addResult.washSaleViolation.forcedImport) {
-                                                console.log(`   → ⚠️ Forced import despite FIFO issue: ${addResult.washSaleViolation.message}`);
-                                                fifoRejectedCount++;
-                                            } else {
-                                                console.log(`   → ⚠️ Wash sale detected: ${addResult.washSaleViolation.message}`);
-                                            }
+                                    if (addResult.washSaleViolation) {
+                                        if (addResult.washSaleViolation.forcedImport) {
+                                            console.log(`   → ⚠️ Forced import despite FIFO issue: ${addResult.washSaleViolation.message}`);
+                                            fifoRejectedCount++;
+                                        } else {
+                                            console.log(`   → ⚠️ Wash sale detected: ${addResult.washSaleViolation.message}`);
                                         }
-                                    } else {
-                                        console.error(`   → ❌ Engine failed to import transaction:`, addResult);
-                                        engineErrorCount++;
-                                        skippedCount++;
                                     }
-                                } catch (error) {
-                                    console.error(`   → ❌ Exception during import:`, error);
+                                } else {
+                                    console.error(`   → ❌ Engine failed to import transaction:`, addResult);
                                     engineErrorCount++;
                                     skippedCount++;
                                 }
-                            } else {
-                                console.log(`   → ⚠️ Skipping duplicate transaction`);
-                                duplicateCount++;
+                            } catch (error) {
+                                console.error(`   → ❌ Exception during import:`, error);
+                                engineErrorCount++;
                                 skippedCount++;
                             }
                         } else {
@@ -1352,6 +1422,7 @@ function importCSV() {
                     console.log(`   ❌ Engine errors: ${engineErrorCount}`);
                     console.log(`   📊 Total skipped: ${skippedCount}`);
                     console.log(`   🔍 Success rate: ${((importedCount / result.transactions.length) * 100).toFixed(1)}%`);
+                    console.log(`   🏦 Accounts processed: ${accountsInCSV.length > 0 ? accountsInCSV.join(', ') : 'None detected'}`);
                     
                     // Show current state after import
                     console.log(`\n📊 ENGINE STATE AFTER IMPORT:`);
