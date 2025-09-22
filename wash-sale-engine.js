@@ -998,9 +998,15 @@ class WashSaleEngine {
      * Remove a stock split and undo its effects
      */
     removeStockSplit(splitId) {
+        console.log(`🗑️ ENGINE: Looking for split ID: ${splitId}`);
+        console.log(`🗑️ ENGINE: Available splits:`, this.stockSplits.map(s => ({ id: s.id, symbol: s.symbol, ratio: s.ratio })));
+        
         const index = this.stockSplits.findIndex(s => s.id === splitId);
+        console.log(`🗑️ ENGINE: Found split at index: ${index}`);
+        
         if (index >= 0) {
             const split = this.stockSplits[index];
+            console.log(`🗑️ ENGINE: Removing split:`, split);
             
             // Undo the split effects on lots and transactions
             this.undoStockSplit(splitId, split.ratio);
@@ -1008,9 +1014,10 @@ class WashSaleEngine {
             // Remove the split
             this.stockSplits.splice(index, 1);
             this.saveTransactions();
-            console.log(`🗑️ Removed stock split: ${split.symbol} ${split.ratio}:1 on ${new Date(split.splitDate).toDateString()}`);
+            console.log(`🗑️ ENGINE: Successfully removed stock split: ${split.symbol} ${split.ratio}:1 on ${new Date(split.splitDate).toDateString()}`);
             return true;
         }
+        console.error(`🗑️ ENGINE: Split ID ${splitId} not found`);
         return false;
     }
 

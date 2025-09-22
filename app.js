@@ -1648,7 +1648,9 @@ function handleSplitFormSubmit(e) {
         return;
     }
     
+    console.log(`📊 Calling engine addStockSplit: ${symbol}, ${parsedDate}, ${ratio}`);
     const success = window.washSaleEngine.addStockSplit(symbol, parsedDate, ratio);
+    console.log(`📊 Add split result: ${success}`);
     
     if (success) {
         alert(`✅ Stock split added successfully!\n\n${symbol} - ${displayRatio} ${splitType} Split\nDate: ${parsedDate.toDateString()}\n\nPre-split transactions will now show adjusted prices.`);
@@ -1658,26 +1660,35 @@ function handleSplitFormSubmit(e) {
         toggleSplitForm(false);
         
         // Update UI
+        console.log(`📊 Updating UI after split addition`);
         window.app.updateUI();
         updateSaveStatus('✓ Stock Split Added');
     } else {
         alert('❌ Failed to add stock split. It may already exist for this date.');
+        console.error(`📊 Failed to add split: ${symbol}, ${parsedDate}, ${ratio}`);
     }
 }
 
 function removeStockSplit(splitId) {
+    console.log(`🗑️ Attempting to remove stock split: ${splitId}`);
+    
     if (!confirm('Remove this stock split?\n\nThis will restore original transaction prices for the affected period.')) {
+        console.log(`🗑️ User cancelled split removal`);
         return;
     }
     
+    console.log(`🗑️ Calling engine removeStockSplit...`);
     const success = window.washSaleEngine.removeStockSplit(splitId);
+    console.log(`🗑️ Remove result: ${success}`);
     
     if (success) {
         alert('✅ Stock split removed successfully!');
+        console.log(`🗑️ Updating UI after split removal`);
         window.app.updateUI();
         updateSaveStatus('✓ Stock Split Removed');
     } else {
         alert('❌ Failed to remove stock split.');
+        console.error(`🗑️ Failed to remove split ID: ${splitId}`);
     }
 }
 
