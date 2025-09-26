@@ -389,8 +389,13 @@ class TaxOptimizationEngine {
 
     countRiskPositions(positions) {
         return positions.filter(pos => {
-            const washSaleEngine = this.washSaleEngine;
-            return washSaleEngine.checkWashSaleRisk(pos.symbol, new Date(), 'sell');
+            // Check if position has recent purchases that could trigger wash sale
+            const recentPurchases = this.washSaleEngine.transactions.filter(t => 
+                t.symbol === pos.symbol && 
+                t.type === 'buy' && 
+                new Date(t.date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+            );
+            return recentPurchases.length > 0;
         }).length;
     }
 
