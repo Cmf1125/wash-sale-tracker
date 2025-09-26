@@ -2568,11 +2568,53 @@ function debugStock(symbol) {
     };
 }
 
+/**
+ * List all stock splits
+ */
+function listAllSplits() {
+    if (!window.washSaleEngine) {
+        console.error('❌ Wash Sale Engine not initialized');
+        return;
+    }
+    
+    const allSplits = window.washSaleEngine.stockSplits;
+    console.log(`📊 ALL STOCK SPLITS (${allSplits.length}):`);
+    
+    if (allSplits.length === 0) {
+        console.log('   No splits found');
+        return;
+    }
+    
+    allSplits.forEach(split => {
+        console.log(`   ${split.symbol}: ${split.ratio}:1 on ${new Date(split.splitDate).toDateString()} (ID: ${split.id})`);
+    });
+    
+    return allSplits;
+}
+
+/**
+ * Force rebuild share lots
+ */
+function forceRebuild() {
+    if (!window.washSaleEngine) {
+        console.error('❌ Wash Sale Engine not initialized');
+        return;
+    }
+    
+    console.log('🔄 Force rebuilding share lots...');
+    window.washSaleEngine.rebuildShareLotsFromTransactions();
+    window.washSaleEngine.saveTransactions();
+    if (window.app) window.app.updateUI();
+    console.log('✅ Rebuild complete');
+}
+
 // Make debug functions available globally
 window.debugPortfolio = debugPortfolio;
 window.fixPortfolio = fixPortfolio;
 window.debugStock = debugStock;
 window.removeStockSplit = removeStockSplit;
+window.listAllSplits = listAllSplits;
+window.forceRebuild = forceRebuild;
 
 // Ensure all engines are initialized
 function ensureEnginesInitialized() {
