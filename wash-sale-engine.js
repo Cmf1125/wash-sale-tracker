@@ -52,7 +52,12 @@ class WashSaleEngine {
      */
     rebuildShareLotsFromTransactions() {
         const lots = [];
-        const sortedTransactions = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        const sortedTransactions = [...this.transactions].sort((a, b) => {
+            const dateDiff = new Date(a.date) - new Date(b.date);
+            if (dateDiff !== 0) return dateDiff;
+            // If dates are equal, sort by transaction ID to ensure consistent ordering
+            return a.id.toString().localeCompare(b.id.toString());
+        });
         
         console.log(`🔄 Rebuilding from ${sortedTransactions.length} transactions...`);
         
@@ -214,7 +219,12 @@ class WashSaleEngine {
         
         // Add the transaction
         this.transactions.push(transaction);
-        this.transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+        this.transactions.sort((a, b) => {
+            const dateDiff = new Date(a.date) - new Date(b.date);
+            if (dateDiff !== 0) return dateDiff;
+            // If dates are equal, sort by transaction ID to ensure consistent ordering
+            return a.id.toString().localeCompare(b.id.toString());
+        });
         
         // Save to storage
         this.saveTransactions();
@@ -313,7 +323,11 @@ class WashSaleEngine {
     calculateAverageCost(symbol, upToDate, excludeTransactionId = null) {
         const symbolTransactions = this.transactions
             .filter(t => t.symbol === symbol && new Date(t.date) <= upToDate && t.id !== excludeTransactionId)
-            .sort((a, b) => new Date(a.date) - new Date(b.date));
+            .sort((a, b) => {
+                const dateDiff = new Date(a.date) - new Date(b.date);
+                if (dateDiff !== 0) return dateDiff;
+                return a.id.toString().localeCompare(b.id.toString());
+            });
 
         let totalShares = 0;
         let totalCost = 0;
@@ -573,7 +587,11 @@ class WashSaleEngine {
         // Get all transactions for this symbol up to (but not including) the sell date
         const priorTransactions = this.transactions
             .filter(t => t.symbol === symbol && new Date(t.date) < sellDate)
-            .sort((a, b) => new Date(a.date) - new Date(b.date));
+            .sort((a, b) => {
+                const dateDiff = new Date(a.date) - new Date(b.date);
+                if (dateDiff !== 0) return dateDiff;
+                return a.id.toString().localeCompare(b.id.toString());
+            });
         
         let totalShares = 0;
         let totalCost = 0;
@@ -847,7 +865,11 @@ class WashSaleEngine {
         const lots = [];
         const transactionsUpToDate = this.transactions
             .filter(t => t.symbol === symbol && new Date(t.date) < targetDate)
-            .sort((a, b) => new Date(a.date) - new Date(b.date));
+            .sort((a, b) => {
+                const dateDiff = new Date(a.date) - new Date(b.date);
+                if (dateDiff !== 0) return dateDiff;
+                return a.id.toString().localeCompare(b.id.toString());
+            });
         
         transactionsUpToDate.forEach(transaction => {
             if (transaction.type === 'buy') {
@@ -1050,7 +1072,11 @@ class WashSaleEngine {
             // Calculate position using transaction logic
             const symbolTransactions = this.transactions
                 .filter(t => t.symbol === symbol)
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
+                .sort((a, b) => {
+                const dateDiff = new Date(a.date) - new Date(b.date);
+                if (dateDiff !== 0) return dateDiff;
+                return a.id.toString().localeCompare(b.id.toString());
+            });
             
             let calculatedShares = 0;
             let unallocatedSells = 0;
@@ -1135,7 +1161,12 @@ class WashSaleEngine {
         
         // Rebuild with enhanced validation
         const lots = [];
-        const sortedTransactions = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        const sortedTransactions = [...this.transactions].sort((a, b) => {
+            const dateDiff = new Date(a.date) - new Date(b.date);
+            if (dateDiff !== 0) return dateDiff;
+            // If dates are equal, sort by transaction ID to ensure consistent ordering
+            return a.id.toString().localeCompare(b.id.toString());
+        });
         
         console.log(`🔄 Processing ${sortedTransactions.length} transactions in chronological order...`);
         
