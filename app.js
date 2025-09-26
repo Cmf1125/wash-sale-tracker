@@ -2119,6 +2119,116 @@ function displayTaxOptimizationResults(analysis) {
 }
 
 /**
+ * Update the YTD tax summary section
+ */
+function updateYTDTaxSummary() {
+    try {
+        console.log('🔍 Updating YTD tax summary...');
+        
+        // Get YTD stats from wash sale engine
+        const ytdStats = window.washSaleEngine.getYTDStats();
+        console.log('YTD Stats:', ytdStats);
+        
+        // Update current year stats
+        document.getElementById('ytd-realized-gains').textContent = `$${ytdStats.totalGains.toLocaleString()}`;
+        document.getElementById('ytd-realized-losses').textContent = `$${ytdStats.totalLosses.toLocaleString()}`;
+        document.getElementById('ytd-net-pnl').textContent = `$${ytdStats.netPnL.toLocaleString()}`;
+        
+        // Use wash sale losses from YTD stats
+        document.getElementById('ytd-wash-sale-losses').textContent = `$${ytdStats.totalWashSaleLosses.toLocaleString()}`;
+        
+        // Calculate tax loss carryforward
+        calculateTaxLossCarryforward(ytdStats);
+        
+        console.log('✅ YTD tax summary updated');
+        
+    } catch (error) {
+        console.error('Error updating YTD tax summary:', error);
+        // Show error in the summary
+        document.getElementById('ytd-realized-gains').textContent = 'Error';
+        document.getElementById('ytd-realized-losses').textContent = 'Error';
+        document.getElementById('ytd-net-pnl').textContent = 'Error';
+        document.getElementById('ytd-wash-sale-losses').textContent = 'Error';
+    }
+}
+
+/**
+ * Save carryforward data to localStorage
+ */
+function saveCarryforwardData() {
+    const previousCarryforward = document.getElementById('previous-carryforward').value;
+    localStorage.setItem('tax_carryforward', previousCarryforward);
+}
+
+/**
+ * Load carryforward data from localStorage
+ */
+function loadCarryforwardData() {
+    const savedCarryforward = localStorage.getItem('tax_carryforward');
+    if (savedCarryforward) {
+        document.getElementById('previous-carryforward').value = savedCarryforward;
+    }
+}
+
+/**
+ * Calculate tax loss carryforward and deduction limits
+ */
+function calculateTaxLossCarryforward(ytdStats) {
+    // Get previous carryforward from user input
+    const previousCarryforward = parseFloat(document.getElementById('previous-carryforward').value) || 0;
+    
+    // Total losses available = prior carryforward + current year net losses
+    const currentYearNetLoss = Math.max(0, -ytdStats.netPnL); // Only if net loss
+    const totalLossesAvailable = previousCarryforward + currentYearNetLoss;
+    
+    // Annual deduction limit is $3,000
+    const annualLimit = 3000;
+    const availableDeduction = Math.min(totalLossesAvailable, annualLimit);
+    const newCarryforward = Math.max(0, totalLossesAvailable - annualLimit);
+    
+    // Update display
+    document.getElementById('available-deduction').textContent = `$${availableDeduction.toLocaleString()}`;
+    document.getElementById('new-carryforward').textContent = `$${newCarryforward.toLocaleString()}`;
+    
+    // Calculate tax impact (assuming 24% tax rate)
+    const taxRate = 0.24;
+    let taxImpact = 0;
+    
+    if (ytdStats.netPnL > 0) {
+        // Net gains - tax liability reduced by available deduction
+        const taxableGains = Math.max(0, ytdStats.netPnL - availableDeduction);
+        taxImpact = -(taxableGains * taxRate); // Negative = tax owed
+    } else {
+        // Net losses - tax savings from deduction
+        taxImpact = availableDeduction * taxRate; // Positive = tax savings
+    }
+    
+    const taxImpactElement = document.getElementById('tax-impact');
+    taxImpactElement.textContent = `${taxImpact >= 0 ? '+' : ''}$${taxImpact.toLocaleString()}`;
+    taxImpactElement.className = taxImpact >= 0 ? 'text-xl font-bold text-green-600' : 'text-xl font-bold text-red-600';
+}
+
+// Auto-update when carryforward input changes and load saved data
+document.addEventListener('DOMContentLoaded', function() {
+    const carryforwardInput = document.getElementById('previous-carryforward');
+    if (carryforwardInput) {
+        // Load saved carryforward data
+        loadCarryforwardData();
+        
+        carryforwardInput.addEventListener('input', function() {
+            // Save the data
+            saveCarryforwardData();
+            
+            // Recalculate when user changes the input
+            const ytdStats = window.washSaleEngine?.getYTDStats();
+            if (ytdStats) {
+                calculateTaxLossCarryforward(ytdStats);
+            }
+        });
+    }
+});
+
+/**
  * Update loss harvesting opportunities table
  */
 function updateLossHarvestingTable(opportunities) {

@@ -717,6 +717,7 @@ class WashSaleEngine {
         let totalLosses = 0;
         let totalGains = 0;
         let washSaleCount = 0;
+        let totalWashSaleLosses = 0;
 
         // Process only sell transactions
         const sellTransactions = yearTransactions.filter(t => t.type === 'sell');
@@ -774,6 +775,7 @@ class WashSaleEngine {
                 // Net loss for this transaction
                 if (hasWashSales) {
                     washSaleCount++;
+                    totalWashSaleLosses += transactionWashSaleLoss;
                     // Only the non-wash-sale portion counts as deductible loss
                     const deductibleLoss = Math.abs(transactionTotalPnL) - transactionWashSaleLoss;
                     if (deductibleLoss > 0) {
@@ -791,6 +793,7 @@ class WashSaleEngine {
             totalLosses,
             totalGains,
             washSaleCount,
+            totalWashSaleLosses,
             netPnL: totalGains - totalLosses
         };
     }
