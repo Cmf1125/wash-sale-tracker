@@ -110,9 +110,13 @@ class WashSaleEngine {
             }
         });
         
-        this.shareLots = lots;
+        // Remove empty lots to keep data clean
+        const activeLots = lots.filter(lot => lot.remainingQuantity > 0);
+        const removedLots = lots.length - activeLots.length;
+        
+        this.shareLots = activeLots;
         this.saveTransactions(); // This will save the rebuilt lots
-        console.log(`✅ Rebuilt ${lots.length} share lots`);
+        console.log(`✅ Rebuilt ${activeLots.length} share lots (removed ${removedLots} empty lots)`);
         
         return lots;
     }
@@ -586,6 +590,15 @@ class WashSaleEngine {
                 console.log(`   → Updated lot ${lot.id}: ${lot.remainingQuantity} shares remaining`);
             }
         });
+        
+        // Remove empty lots to keep data clean
+        const beforeCount = this.shareLots.length;
+        this.shareLots = this.shareLots.filter(lot => lot.remainingQuantity > 0);
+        const removedCount = beforeCount - this.shareLots.length;
+        
+        if (removedCount > 0) {
+            console.log(`   → Cleaned up ${removedCount} empty lots`);
+        }
     }
 
     /**
