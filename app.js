@@ -2432,9 +2432,92 @@ function fixPortfolio() {
     return remainingIssues;
 }
 
+/**
+ * Debug specific stock split issues
+ */
+function debugStock(symbol) {
+    if (!window.washSaleEngine) {
+        console.error('❌ Wash Sale Engine not initialized');
+        return;
+    }
+    
+    symbol = symbol.toUpperCase();
+    console.log(`🔍 DEBUGGING ${symbol}:`);
+    
+    // Get all transactions for this symbol
+    const transactions = window.washSaleEngine.transactions
+        .filter(t => t.symbol === symbol)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    console.log(`\n📋 TRANSACTIONS (${transactions.length}):`);
+    transactions.forEach(t => {
+        console.log(`   ${new Date(t.date).toDateString()}: ${t.type.toUpperCase()} ${t.quantity} @ $${t.price.toFixed(2)}`);
+    });
+    
+    // Get all splits for this symbol
+    const splits = window.washSaleEngine.getStockSplits(symbol);
+    console.log(`\n📊 SPLITS (${splits.length}):`);
+    splits.forEach(s => {
+        console.log(`   ${new Date(s.splitDate).toDateString()}: ${s.ratio}:1 (${s.ratio < 1 ? 'reverse' : 'regular'})`);
+    });
+    
+    // Get current share lots
+    const lots = window.washSaleEngine.shareLots.filter(lot => lot.symbol === symbol && lot.remainingQuantity > 0);
+    console.log(`\n📦 CURRENT SHARE LOTS (${lots.length}):`);
+    lots.forEach(lot => {
+        console.log(`   Lot ${lot.id}: ${lot.remainingQuantity} shares @ $${lot.costPerShare.toFixed(4)} (purchased ${new Date(lot.purchaseDate).toDateString()})`);
+        if (lot.appliedSplits) {
+            console.log(`     Applied splits: ${lot.appliedSplits.join(', ')}`);
+        }
+    });
+    
+    // Calculate what position should be
+    let expectedShares = 0;
+    transactions.forEach(t => {
+        if (t.type === 'buy') {
+            expectedShares += t.quantity;
+        } else {
+            expectedShares -= t.quantity;
+        }
+    });
+    
+    // Apply splits to expected shares
+    let adjustedExpectedShares = expectedShares;
+    splits.forEach(split => {
+        adjustedExpectedShares *= split.ratio;
+    });
+    
+    const actualShares = lots.reduce((sum, lot) => sum + lot.remainingQuantity, 0);
+    
+    console.log(`\n🎯 EXPECTED POSITION:`);
+    console.log(`   Raw calculation: ${expectedShares} shares`);
+    console.log(`   After splits: ${adjustedExpectedShares.toFixed(6)} shares`);
+    console.log(`   Actual portfolio: ${actualShares} shares`);
+    console.log(`   Difference: ${Math.abs(adjustedExpectedShares - actualShares).toFixed(6)} shares`);
+    
+    if (Math.abs(adjustedExpectedShares - actualShares) > 0.001) {
+        console.log(`❌ DISCREPANCY FOUND! Expected ${adjustedExpectedShares.toFixed(6)} but have ${actualShares}`);
+        
+        if (adjustedExpectedShares === 0 && actualShares > 0) {
+            console.log(`💡 Suggestion: You should have zero shares. Check if split dates are correct or if there are missing sell transactions.`);
+        }
+    } else {
+        console.log(`✅ Position is correct`);
+    }
+    
+    return {
+        transactions,
+        splits,
+        lots,
+        expectedShares: adjustedExpectedShares,
+        actualShares
+    };
+}
+
 // Make debug functions available globally
 window.debugPortfolio = debugPortfolio;
 window.fixPortfolio = fixPortfolio;
+window.debugStock = debugStock;
 
 // Ensure all engines are initialized
 function ensureEnginesInitialized() {
