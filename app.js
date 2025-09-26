@@ -1852,7 +1852,7 @@ function handleSplitFormSubmit(e) {
     
     const symbol = document.getElementById('split-symbol').value.trim().toUpperCase();
     const splitDate = document.getElementById('split-date').value;
-    const ratio = parseFloat(document.getElementById('split-ratio').value);
+    const ratioInput = document.getElementById('split-ratio').value.trim();
     
     if (!symbol) {
         alert('Please enter a stock symbol');
@@ -1864,10 +1864,33 @@ function handleSplitFormSubmit(e) {
         return;
     }
     
+    if (!ratioInput) {
+        alert('Please enter a split ratio (e.g., 2:1 or 1:15)');
+        return;
+    }
+    
     const parsedDate = new Date(splitDate);
     if (isNaN(parsedDate.getTime())) {
         alert('Invalid date format');
         return;
+    }
+    
+    // Parse the ratio from formats like "2:1", "4:1", "1:15", etc.
+    let ratio;
+    if (ratioInput.includes(':')) {
+        const parts = ratioInput.split(':').map(p => parseFloat(p.trim()));
+        if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1]) || parts[0] <= 0 || parts[1] <= 0) {
+            alert('Invalid ratio format. Use format like "2:1" for 2-for-1 split or "1:15" for 1-for-15 reverse split');
+            return;
+        }
+        ratio = parts[0] / parts[1]; // Convert to decimal (e.g., 2:1 = 2.0, 1:15 = 0.0667)
+    } else {
+        // Try to parse as decimal
+        ratio = parseFloat(ratioInput);
+        if (isNaN(ratio) || ratio <= 0) {
+            alert('Invalid ratio. Enter as ratio (2:1) or decimal (2.0)');
+            return;
+        }
     }
     
     // Confirm the split
