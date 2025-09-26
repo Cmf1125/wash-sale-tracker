@@ -2433,6 +2433,60 @@ function fixPortfolio() {
 }
 
 /**
+ * Remove a specific stock split by date
+ */
+function removeStockSplit(symbol, splitDate) {
+    if (!window.washSaleEngine) {
+        console.error('❌ Wash Sale Engine not initialized');
+        return;
+    }
+    
+    symbol = symbol.toUpperCase();
+    const targetDate = new Date(splitDate);
+    
+    const splits = window.washSaleEngine.getStockSplits(symbol);
+    const splitToRemove = splits.find(s => {
+        const sDate = new Date(s.splitDate);
+        return Math.abs(sDate.getTime() - targetDate.getTime()) < 24 * 60 * 60 * 1000; // Within 24 hours
+    });
+    
+    if (!splitToRemove) {
+        console.log(`❌ No split found for ${symbol} on ${targetDate.toDateString()}`);
+        return false;
+    }
+    
+    const confirmed = confirm(
+        `Remove stock split for ${symbol}?\n\n` +
+        `Date: ${new Date(splitToRemove.splitDate).toDateString()}\n` +
+        `Ratio: ${splitToRemove.ratio}:1\n\n` +
+        `This will rebuild your share lots and update the portfolio.`
+    );
+    
+    if (!confirmed) return false;
+    
+    console.log(`🗑️ Removing split: ${symbol} ${splitToRemove.ratio}:1 on ${new Date(splitToRemove.splitDate).toDateString()}`);
+    
+    // Remove from array
+    const index = window.washSaleEngine.stockSplits.findIndex(s => s.id === splitToRemove.id);
+    if (index > -1) {
+        window.washSaleEngine.stockSplits.splice(index, 1);
+        
+        // Rebuild share lots to remove split effects
+        console.log(`🔄 Rebuilding share lots to remove split effects...`);
+        window.washSaleEngine.rebuildShareLotsFromTransactions();
+        
+        // Save and update UI
+        window.washSaleEngine.saveTransactions();
+        if (window.app) window.app.updateUI();
+        
+        console.log(`✅ Split removed and portfolio updated`);
+        return true;
+    }
+    
+    return false;
+}
+
+/**
  * Debug specific stock split issues
  */
 function debugStock(symbol) {
@@ -2518,6 +2572,7 @@ function debugStock(symbol) {
 window.debugPortfolio = debugPortfolio;
 window.fixPortfolio = fixPortfolio;
 window.debugStock = debugStock;
+window.removeStockSplit = removeStockSplit;
 
 // Ensure all engines are initialized
 function ensureEnginesInitialized() {
