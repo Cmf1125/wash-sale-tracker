@@ -2280,9 +2280,17 @@ function displaySplitDetectionResults(potentialSplits) {
                 <h4 class="text-lg font-medium text-gray-900">
                     ${potentialSplits.length} Potential Split${potentialSplits.length !== 1 ? 's' : ''} Found
                 </h4>
-                <span class="text-sm text-gray-500">
-                    Review and confirm each detected split
-                </span>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-500">
+                        Review and confirm each detected split
+                    </span>
+                    <button 
+                        onclick="dismissAllSplitAlerts()"
+                        class="px-3 py-1 bg-red-100 text-red-700 text-xs rounded hover:bg-red-200 transition-colors"
+                    >
+                        Dismiss All
+                    </button>
+                </div>
             </div>
             ${alertsHtml}
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -2344,13 +2352,22 @@ function confirmSplit(symbol, date, ratio, alertIndex) {
  */
 function dismissSplitAlert(alertIndex) {
     const alertElements = document.querySelectorAll('#split-scan-results .bg-yellow-50');
-    if (alertElements[alertIndex]) {
-        alertElements[alertIndex].style.transition = 'opacity 0.3s';
-        alertElements[alertIndex].style.opacity = '0';
+    
+    // Find the alert element to dismiss (handle cases where indexes might be off)
+    let alertToRemove = alertElements[alertIndex];
+    if (!alertToRemove && alertElements.length > 0) {
+        // If the specific index doesn't exist, remove the last one
+        alertToRemove = alertElements[alertElements.length - 1];
+        console.log(`Alert ${alertIndex} not found, removing last alert instead`);
+    }
+    
+    if (alertToRemove) {
+        alertToRemove.style.transition = 'opacity 0.3s';
+        alertToRemove.style.opacity = '0';
         setTimeout(() => {
-            alertElements[alertIndex].remove();
+            alertToRemove.remove();
             
-            // Check if any alerts remain
+            // Check if any alerts remain after removal
             const remainingAlerts = document.querySelectorAll('#split-scan-results .bg-yellow-50');
             if (remainingAlerts.length === 0) {
                 document.getElementById('split-scan-results').innerHTML = `
@@ -2362,7 +2379,26 @@ function dismissSplitAlert(alertIndex) {
                 `;
             }
         }, 300);
+    } else {
+        console.error(`No alert element found to dismiss (index: ${alertIndex})`);
     }
+}
+
+/**
+ * Dismiss all split detection alerts
+ */
+function dismissAllSplitAlerts() {
+    const confirmed = confirm('Dismiss all split detection alerts?\n\nThis will clear all current split suggestions.');
+    
+    if (!confirmed) return;
+    
+    document.getElementById('split-scan-results').innerHTML = `
+        <div class="text-center py-8 text-green-600">
+            <div class="text-4xl mb-4">✅</div>
+            <p class="font-medium">All split alerts dismissed</p>
+            <p class="text-sm text-gray-600 mt-2">Run another scan anytime to check for new potential splits.</p>
+        </div>
+    `;
 }
 
 /**
