@@ -70,7 +70,11 @@ class WashSaleEngine {
                     .filter(lot => lot.symbol === symbol && lot.remainingQuantity > 0)
                     .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
                 
-                let remainingToSell = transaction.quantity;
+                // Apply split adjustments to sell quantity to match lot quantities
+                const adjustments = this.calculateSplitAdjustments(transaction.symbol, new Date(transaction.date));
+                let remainingToSell = transaction.quantity * adjustments.totalRatio;
+                
+                console.log(`   → Processing sell: ${transaction.quantity} → ${remainingToSell} shares (split ratio: ${adjustments.totalRatio})`);
                 
                 for (const lot of availableLots) {
                     if (remainingToSell <= 0) break;
@@ -384,11 +388,14 @@ class WashSaleEngine {
      */
     processFifoSale(sellTransaction, options = {}) {
         const symbol = sellTransaction.symbol;
-        const sellQuantity = sellTransaction.quantity;
-        const sellPrice = sellTransaction.price;
         const sellDate = new Date(sellTransaction.date);
         
-        console.log(`🔍 FIFO Sale Processing: ${symbol} - ${sellQuantity} shares @ $${sellPrice}`);
+        // Apply split adjustments to sell transaction to match lot quantities
+        const adjustments = this.calculateSplitAdjustments(symbol, sellDate);
+        const sellQuantity = sellTransaction.quantity * adjustments.totalRatio;
+        const sellPrice = sellTransaction.price / adjustments.totalRatio;
+        
+        console.log(`🔍 FIFO Sale Processing: ${symbol} - ${sellTransaction.quantity} → ${sellQuantity} shares @ $${sellTransaction.price} → $${sellPrice.toFixed(4)} (split ratio: ${adjustments.totalRatio})`);
         
         // Get available lots for this symbol (FIFO order)
         const availableLots = this.getAvailableShareLots(symbol);
