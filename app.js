@@ -2140,6 +2140,283 @@ function updateLossHarvestingTable(opportunities) {
     `).join('');
 }
 
+/**
+ * Scan for potential stock splits in transaction history
+ */
+async function scanForStockSplits() {
+    const scanButton = document.getElementById('scan-splits-btn');
+    const resultsContainer = document.getElementById('split-scan-results');
+    
+    // Show loading state
+    scanButton.disabled = true;
+    scanButton.textContent = 'Scanning...';
+    resultsContainer.innerHTML = `
+        <div class="text-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p class="text-gray-600">Analyzing transaction history for potential stock splits...</p>
+        </div>
+    `;
+    resultsContainer.classList.remove('hidden');
+    
+    try {
+        // Run split detection
+        const potentialSplits = window.washSaleEngine.detectPotentialSplits();
+        
+        // Reset button
+        scanButton.disabled = false;
+        scanButton.textContent = 'Scan for Stock Splits';
+        
+        if (potentialSplits.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="text-center py-8 text-green-600">
+                    <div class="text-4xl mb-4">✅</div>
+                    <p class="font-medium">No potential stock splits detected</p>
+                    <p class="text-sm text-gray-600 mt-2">Your transaction history appears to have consistent pricing across all positions.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Display potential splits
+        displaySplitDetectionResults(potentialSplits);
+        
+    } catch (error) {
+        console.error('Error scanning for splits:', error);
+        scanButton.disabled = false;
+        scanButton.textContent = 'Scan for Stock Splits';
+        resultsContainer.innerHTML = `
+            <div class="text-center py-8 text-red-600">
+                <div class="text-4xl mb-4">❌</div>
+                <p class="font-medium">Error scanning for splits</p>
+                <p class="text-sm mt-2">Please try again or check your transaction data.</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Display stock split detection results
+ */
+function displaySplitDetectionResults(potentialSplits) {
+    const resultsContainer = document.getElementById('split-scan-results');
+    
+    const alertsHtml = potentialSplits.map((split, index) => `
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <span class="text-yellow-600 font-semibold text-sm">⚠️</span>
+                    </div>
+                </div>
+                <div class="ml-3 flex-1">
+                    <h4 class="text-yellow-800 font-medium">
+                        Potential Stock Split Detected: ${split.symbol}
+                    </h4>
+                    <div class="mt-2 text-yellow-700 text-sm">
+                        <p><strong>Date Range:</strong> ${new Date(split.beforeDate).toLocaleDateString()} to ${new Date(split.afterDate).toLocaleDateString()}</p>
+                        <p><strong>Price Change:</strong> $${split.beforePrice.toFixed(2)} → $${split.afterPrice.toFixed(2)} (${(split.priceRatio * 100).toFixed(1)}% drop)</p>
+                        <p><strong>Suggested Split Ratio:</strong> ${split.suggestedRatio}</p>
+                        <p><strong>Confidence:</strong> 
+                            <span class="px-2 py-1 rounded text-xs ${
+                                split.confidence === 'HIGH' ? 'bg-red-100 text-red-800' :
+                                split.confidence === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-800'
+                            }">
+                                ${split.confidence}
+                            </span>
+                        </p>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <button 
+                            onclick="confirmSplit('${split.symbol}', '${split.afterDate}', '${split.suggestedRatio}', ${index})"
+                            class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                        >
+                            Add Split Record
+                        </button>
+                        <button 
+                            onclick="dismissSplitAlert(${index})"
+                            class="px-3 py-1 bg-gray-300 text-gray-700 text-sm rounded hover:bg-gray-400 transition-colors"
+                        >
+                            Dismiss
+                        </button>
+                        <button 
+                            onclick="viewSplitDetails('${split.symbol}', '${split.beforeDate}', '${split.afterDate}')"
+                            class="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded hover:bg-gray-200 transition-colors"
+                        >
+                            View Details
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    resultsContainer.innerHTML = `
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <h4 class="text-lg font-medium text-gray-900">
+                    ${potentialSplits.length} Potential Split${potentialSplits.length !== 1 ? 's' : ''} Found
+                </h4>
+                <span class="text-sm text-gray-500">
+                    Review and confirm each detected split
+                </span>
+            </div>
+            ${alertsHtml}
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <span class="text-blue-600">ℹ️</span>
+                    </div>
+                    <div class="ml-3">
+                        <h5 class="text-blue-800 font-medium text-sm">About Stock Split Detection</h5>
+                        <p class="text-blue-700 text-sm mt-1">
+                            This system detects significant price drops that may indicate stock splits. 
+                            Please verify each suggestion against official records before confirming. 
+                            Adding incorrect split data can affect your tax calculations.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Confirm and add a stock split record
+ */
+function confirmSplit(symbol, date, ratio, alertIndex) {
+    const confirmed = confirm(
+        `Add ${ratio} stock split for ${symbol} on ${new Date(date).toLocaleDateString()}?\n\n` +
+        `This will update all future calculations for ${symbol}. Make sure this information is accurate.`
+    );
+    
+    if (confirmed) {
+        try {
+            // Parse ratio (e.g., "2:1" -> [2, 1])
+            const [numerator, denominator] = ratio.split(':').map(x => parseInt(x.trim()));
+            
+            // Add split to engine
+            window.washSaleEngine.addStockSplit(symbol, date, numerator / denominator);
+            
+            // Show success message
+            alert(`✅ Stock split added successfully!\n\n${symbol}: ${ratio} split on ${new Date(date).toLocaleDateString()}`);
+            
+            // Remove the alert from display
+            dismissSplitAlert(alertIndex);
+            
+            // Refresh any displayed data
+            if (typeof refreshAllData === 'function') {
+                refreshAllData();
+            }
+            
+        } catch (error) {
+            console.error('Error adding stock split:', error);
+            alert('❌ Error adding stock split. Please check the data and try again.');
+        }
+    }
+}
+
+/**
+ * Dismiss a split detection alert
+ */
+function dismissSplitAlert(alertIndex) {
+    const alertElements = document.querySelectorAll('#split-scan-results .bg-yellow-50');
+    if (alertElements[alertIndex]) {
+        alertElements[alertIndex].style.transition = 'opacity 0.3s';
+        alertElements[alertIndex].style.opacity = '0';
+        setTimeout(() => {
+            alertElements[alertIndex].remove();
+            
+            // Check if any alerts remain
+            const remainingAlerts = document.querySelectorAll('#split-scan-results .bg-yellow-50');
+            if (remainingAlerts.length === 0) {
+                document.getElementById('split-scan-results').innerHTML = `
+                    <div class="text-center py-8 text-green-600">
+                        <div class="text-4xl mb-4">✅</div>
+                        <p class="font-medium">All split alerts reviewed</p>
+                        <p class="text-sm text-gray-600 mt-2">Run another scan anytime to check for new potential splits.</p>
+                    </div>
+                `;
+            }
+        }, 300);
+    }
+}
+
+/**
+ * View detailed information about a potential split
+ */
+function viewSplitDetails(symbol, beforeDate, afterDate) {
+    const transactions = window.washSaleEngine.transactions
+        .filter(t => t.symbol === symbol)
+        .filter(t => {
+            const transDate = new Date(t.date);
+            return transDate >= new Date(beforeDate) && transDate <= new Date(afterDate);
+        })
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    if (transactions.length === 0) {
+        alert('No transactions found in the specified date range.');
+        return;
+    }
+    
+    const detailsHtml = transactions.map(t => 
+        `${new Date(t.date).toLocaleDateString()}: ${t.type.toUpperCase()} ${t.quantity} shares @ $${t.price.toFixed(2)}`
+    ).join('\n');
+    
+    alert(
+        `Transaction Details for ${symbol}\n` +
+        `Date Range: ${new Date(beforeDate).toLocaleDateString()} - ${new Date(afterDate).toLocaleDateString()}\n\n` +
+        detailsHtml
+    );
+}
+
+/**
+ * Debug portfolio calculation issues
+ */
+function debugPortfolio() {
+    if (!window.washSaleEngine) {
+        console.error('❌ Wash Sale Engine not initialized');
+        return;
+    }
+    
+    console.log('🔍 Running portfolio diagnostics...');
+    const discrepancies = window.washSaleEngine.diagnosePortfolioDiscrepancies();
+    
+    if (discrepancies.length > 0) {
+        console.log(`\n🔧 Found ${discrepancies.length} issues. Would you like to fix them?`);
+        console.log('Run fixPortfolio() to attempt automatic fix.');
+        return discrepancies;
+    } else {
+        console.log('✅ All portfolio calculations are correct.');
+        return [];
+    }
+}
+
+/**
+ * Fix portfolio calculation issues
+ */
+function fixPortfolio() {
+    if (!window.washSaleEngine) {
+        console.error('❌ Wash Sale Engine not initialized');
+        return;
+    }
+    
+    console.log('🔧 Attempting to fix portfolio discrepancies...');
+    const remainingIssues = window.washSaleEngine.fixPortfolioDiscrepancies();
+    
+    // Refresh the UI after fixing
+    if (window.currentView && window.currentView.updateTransactionTable) {
+        window.currentView.updateTransactionTable();
+        window.currentView.updatePortfolioSummary();
+    }
+    
+    return remainingIssues;
+}
+
+// Make debug functions available globally
+window.debugPortfolio = debugPortfolio;
+window.fixPortfolio = fixPortfolio;
+
 // Ensure all engines are initialized
 function ensureEnginesInitialized() {
     // Initialize tax optimization engine if not ready

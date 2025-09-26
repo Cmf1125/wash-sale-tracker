@@ -180,6 +180,32 @@
 
         <!-- Portfolio Tab -->
         <div id="portfolio-tab" class="tab-content hidden">
+            <!-- Split Detection Section -->
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="p-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-800">🔍 Automatic Split Detection</h3>
+                        <button onclick="scanForStockSplits()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                            Scan for Splits
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Split Detection Results -->
+                <div id="split-detection-results" class="p-4 hidden">
+                    <div id="split-alerts-container">
+                        <!-- Dynamic split alerts will be inserted here -->
+                    </div>
+                </div>
+                
+                <!-- No Splits Found Message -->
+                <div id="no-splits-detected" class="p-4 text-center text-gray-500 hidden">
+                    <div class="text-4xl mb-2">✅</div>
+                    <p>No potential stock splits detected in your transaction history.</p>
+                    <p class="text-sm mt-1">All existing splits appear to be properly recorded.</p>
+                </div>
+            </div>
+
             <!-- Stock Split Management Section -->
             <div class="bg-white rounded-lg shadow mb-6">
                 <div class="p-4 border-b border-gray-200">

@@ -923,6 +923,284 @@ class WashSaleEngine {
     }
 
     /**
+     * Detect potential stock splits by analyzing price gaps in transaction history
+     * @param {string} symbol - Optional symbol to check, or null to check all symbols
+     * @returns {Array} Array of potential split alerts
+     */
+    detectPotentialSplits(symbol = null) {
+        console.log('🔍 Scanning for potential stock splits...');
+        const alerts = [];
+        const transactionsToCheck = symbol ? 
+            this.transactions.filter(t => t.symbol === symbol) : 
+            this.transactions;
+        
+        // Group transactions by symbol
+        const bySymbol = {};
+        transactionsToCheck.forEach(t => {
+            if (!bySymbol[t.symbol]) bySymbol[t.symbol] = [];
+            bySymbol[t.symbol].push(t);
+        });
+        
+        Object.entries(bySymbol).forEach(([sym, transactions]) => {
+            if (transactions.length < 2) return; // Need at least 2 transactions to detect gaps
+            
+            const sorted = transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            for (let i = 1; i < sorted.length; i++) {
+                const prev = sorted[i-1];
+                const curr = sorted[i];
+                const daysBetween = Math.abs(new Date(curr.date) - new Date(prev.date)) / (1000 * 60 * 60 * 24);
+                
+                // Only consider transactions within reasonable timeframe (up to 60 days apart)
+                if (daysBetween > 60) continue;
+                
+                const ratio = prev.price / curr.price;
+                
+                // Common split ratios: 2:1, 3:1, 4:1, 5:1, 7:1, 10:1, 20:1
+                const commonRatios = [2, 3, 4, 5, 7, 10, 20];
+                const matchedRatio = commonRatios.find(r => Math.abs(ratio - r) < 0.3);
+                
+                if (matchedRatio && ratio > 1.8) { // Only consider significant price drops
+                    // Check if we already have this split recorded
+                    const existingSplit = this.stockSplits.find(s => 
+                        s.symbol === sym && 
+                        Math.abs(new Date(s.splitDate).getTime() - new Date(curr.date).getTime()) < 7 * 24 * 60 * 60 * 1000 // Within 7 days
+                    );
+                    
+                    if (!existingSplit) {
+                        const confidence = this.calculateSplitConfidence(ratio, matchedRatio, daysBetween);
+                        
+                        alerts.push({
+                            symbol: sym,
+                            detectedDate: curr.date,
+                            suggestedRatio: matchedRatio,
+                            priceFrom: prev.price,
+                            priceTo: curr.price,
+                            actualRatio: ratio,
+                            daysBetween: Math.round(daysBetween),
+                            confidence: confidence,
+                            previousTransaction: prev,
+                            currentTransaction: curr
+                        });
+                        
+                        console.log(`   🎯 Potential ${matchedRatio}:1 split detected for ${sym} around ${new Date(curr.date).toDateString()}`);
+                        console.log(`      Price drop: $${prev.price.toFixed(2)} → $${curr.price.toFixed(2)} (${ratio.toFixed(1)}x) - ${confidence}% confidence`);
+                    }
+                }
+            }
+        });
+        
+        // Sort by confidence (highest first)
+        alerts.sort((a, b) => b.confidence - a.confidence);
+        
+        console.log(`✅ Split detection complete: Found ${alerts.length} potential splits`);
+        return alerts;
+    }
+
+    /**
+     * Diagnostic function to identify portfolio calculation issues
+     */
+    diagnosePortfolioDiscrepancies() {
+        console.log('🔍 DIAGNOSING PORTFOLIO DISCREPANCIES...');
+        
+        const symbols = [...new Set(this.transactions.map(t => t.symbol))];
+        const discrepancies = [];
+        
+        for (const symbol of symbols) {
+            console.log(`\n📊 Analyzing ${symbol}:`);
+            
+            // Calculate position using transaction logic
+            const symbolTransactions = this.transactions
+                .filter(t => t.symbol === symbol)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            let calculatedShares = 0;
+            let unallocatedSells = 0;
+            
+            for (const transaction of symbolTransactions) {
+                console.log(`   ${new Date(transaction.date).toDateString()}: ${transaction.type.toUpperCase()} ${transaction.quantity} @ $${transaction.price}`);
+                
+                if (transaction.type === 'buy') {
+                    // Apply split adjustments for buy transactions
+                    const adjustments = this.calculateSplitAdjustments(symbol, new Date(transaction.date));
+                    const adjustedQuantity = transaction.quantity * adjustments.totalRatio;
+                    calculatedShares += adjustedQuantity;
+                    console.log(`     → Added ${adjustedQuantity} shares (split adjusted from ${transaction.quantity})`);
+                } else if (transaction.type === 'sell') {
+                    // Apply split adjustments for sell transactions
+                    const adjustments = this.calculateSplitAdjustments(symbol, new Date(transaction.date));
+                    const adjustedQuantity = transaction.quantity * adjustments.totalRatio;
+                    
+                    if (calculatedShares >= adjustedQuantity) {
+                        calculatedShares -= adjustedQuantity;
+                        console.log(`     → Sold ${adjustedQuantity} shares (split adjusted from ${transaction.quantity})`);
+                    } else {
+                        unallocatedSells += adjustedQuantity - calculatedShares;
+                        calculatedShares = 0;
+                        console.log(`     → ⚠️  Could only sell ${calculatedShares} of ${adjustedQuantity} requested shares`);
+                    }
+                }
+            }
+            
+            // Get current portfolio position
+            const portfolio = this.getPortfolio();
+            const portfolioPosition = portfolio[symbol];
+            const portfolioShares = portfolioPosition ? portfolioPosition.shares : 0;
+            
+            console.log(`   📊 Transaction-based calculation: ${calculatedShares} shares`);
+            console.log(`   📊 Portfolio method shows: ${portfolioShares} shares`);
+            
+            if (Math.abs(calculatedShares - portfolioShares) > 0.001) {
+                console.log(`   ❌ DISCREPANCY FOUND: ${Math.abs(calculatedShares - portfolioShares)} shares difference`);
+                discrepancies.push({
+                    symbol,
+                    transactionBasedShares: calculatedShares,
+                    portfolioShares,
+                    difference: portfolioShares - calculatedShares,
+                    unallocatedSells
+                });
+            } else {
+                console.log(`   ✅ Portfolio calculation matches transaction analysis`);
+            }
+        }
+        
+        if (discrepancies.length > 0) {
+            console.log(`\n❌ FOUND ${discrepancies.length} PORTFOLIO DISCREPANCIES:`);
+            discrepancies.forEach(disc => {
+                console.log(`   ${disc.symbol}: Portfolio shows ${disc.portfolioShares}, should be ${disc.transactionBasedShares} (diff: ${disc.difference})`);
+            });
+            return discrepancies;
+        } else {
+            console.log(`\n✅ All portfolio calculations are consistent`);
+            return [];
+        }
+    }
+
+    /**
+     * Fix portfolio discrepancies by rebuilding share lots with proper validation
+     */
+    fixPortfolioDiscrepancies() {
+        console.log('🔧 FIXING PORTFOLIO DISCREPANCIES...');
+        
+        // First, diagnose to understand the issues
+        const discrepancies = this.diagnosePortfolioDiscrepancies();
+        
+        if (discrepancies.length === 0) {
+            console.log('✅ No discrepancies found to fix');
+            return;
+        }
+        
+        console.log(`🔧 Rebuilding share lots to fix ${discrepancies.length} discrepancies...`);
+        
+        // Clear existing share lots
+        this.shareLots = [];
+        
+        // Rebuild with enhanced validation
+        const lots = [];
+        const sortedTransactions = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        console.log(`🔄 Processing ${sortedTransactions.length} transactions in chronological order...`);
+        
+        sortedTransactions.forEach((transaction, index) => {
+            console.log(`\n${index + 1}/${sortedTransactions.length}: ${new Date(transaction.date).toDateString()} - ${transaction.type.toUpperCase()} ${transaction.quantity} ${transaction.symbol} @ $${transaction.price}`);
+            
+            if (transaction.type === 'buy') {
+                // Create new lot for purchase
+                const lot = this.createShareLot(transaction);
+                lots.push(lot);
+                console.log(`   ✅ Created lot: ${lot.originalQuantity} shares @ $${lot.costPerShare.toFixed(4)}`);
+                
+            } else if (transaction.type === 'sell') {
+                // Allocate sale against existing lots using FIFO
+                const symbol = transaction.symbol;
+                const availableLots = lots
+                    .filter(lot => lot.symbol === symbol && lot.remainingQuantity > 0)
+                    .sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
+                
+                // Apply split adjustments to sell quantity to match lot quantities
+                const adjustments = this.calculateSplitAdjustments(transaction.symbol, new Date(transaction.date));
+                let remainingToSell = transaction.quantity * adjustments.totalRatio;
+                
+                console.log(`   🔍 Attempting to sell ${transaction.quantity} → ${remainingToSell} shares (split ratio: ${adjustments.totalRatio})`);
+                
+                // Calculate total available shares
+                const totalAvailable = availableLots.reduce((sum, lot) => sum + lot.remainingQuantity, 0);
+                console.log(`   📊 Available shares: ${totalAvailable}, Requested: ${remainingToSell}`);
+                
+                if (totalAvailable < remainingToSell) {
+                    console.warn(`   ⚠️  INSUFFICIENT SHARES: Only ${totalAvailable} available for ${remainingToSell} requested`);
+                    console.warn(`   → This sell transaction will result in a portfolio discrepancy`);
+                    
+                    // Log which lots are available
+                    availableLots.forEach(lot => {
+                        console.log(`     Available lot: ${lot.remainingQuantity} shares from ${lot.purchaseDate.toDateString()}`);
+                    });
+                }
+                
+                let allocatedShares = 0;
+                for (const lot of availableLots) {
+                    if (remainingToSell <= 0) break;
+                    
+                    const sharesFromThisLot = Math.min(remainingToSell, lot.remainingQuantity);
+                    lot.remainingQuantity -= sharesFromThisLot;
+                    remainingToSell -= sharesFromThisLot;
+                    allocatedShares += sharesFromThisLot;
+                    
+                    console.log(`     → Allocated ${sharesFromThisLot} shares from lot ${lot.id} (${lot.remainingQuantity} remaining)`);
+                }
+                
+                if (remainingToSell > 0) {
+                    console.error(`   ❌ UNALLOCATED SELL: ${remainingToSell} shares could not be allocated`);
+                    console.error(`   → This indicates a data inconsistency that needs to be resolved`);
+                } else {
+                    console.log(`   ✅ Successfully allocated ${allocatedShares} shares`);
+                }
+            }
+        });
+        
+        // Update share lots
+        this.shareLots = lots;
+        
+        // Save the corrected data
+        this.saveTransactions();
+        
+        // Verify the fix
+        console.log('\n🔍 Verifying fix...');
+        const remainingDiscrepancies = this.diagnosePortfolioDiscrepancies();
+        
+        if (remainingDiscrepancies.length === 0) {
+            console.log('✅ Portfolio discrepancies successfully fixed!');
+        } else {
+            console.log(`❌ ${remainingDiscrepancies.length} discrepancies still remain after fix attempt`);
+        }
+        
+        return remainingDiscrepancies;
+    }
+
+    /**
+     * Calculate confidence score for a detected split
+     */
+    calculateSplitConfidence(actualRatio, suggestedRatio, daysBetween) {
+        let confidence = 100;
+        
+        // Reduce confidence based on how far actual ratio is from suggested ratio
+        const ratioError = Math.abs(actualRatio - suggestedRatio) / suggestedRatio;
+        confidence -= ratioError * 50; // Up to 50% penalty for ratio mismatch
+        
+        // Reduce confidence if transactions are too far apart
+        if (daysBetween > 30) {
+            confidence -= (daysBetween - 30) * 2; // 2% penalty per day over 30 days
+        }
+        
+        // Common split ratios get bonus confidence
+        if ([2, 3, 4, 5, 10].includes(suggestedRatio)) {
+            confidence += 10;
+        }
+        
+        return Math.max(10, Math.min(100, Math.round(confidence)));
+    }
+
+    /**
      * Get split-adjusted values for a transaction (for display and calculations)
      * This does NOT modify the original transaction data
      */
