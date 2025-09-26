@@ -314,3 +314,4 @@ class SimilarStocksEngine {
 
 // Initialize and export
 const similarStocksEngine = new SimilarStocksEngine();
+window.similarStocksEngine = similarStocksEngine;

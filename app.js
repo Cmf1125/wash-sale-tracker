@@ -2140,4 +2140,22 @@ function updateLossHarvestingTable(opportunities) {
     `).join('');
 }
 
+// Ensure all engines are initialized
+function ensureEnginesInitialized() {
+    // Initialize tax optimization engine if not ready
+    if (window.washSaleEngine && !window.taxOptimizationEngine) {
+        window.taxOptimizationEngine = new TaxOptimizationEngine(window.washSaleEngine);
+        console.log('✅ Tax Optimization Engine initialized in app.js');
+    }
+    
+    // Ensure similar stocks engine is available
+    if (!window.similarStocksEngine) {
+        window.similarStocksEngine = new SimilarStocksEngine();
+        console.log('✅ Similar Stocks Engine initialized in app.js');
+    }
+}
+
+// Initialize engines
+ensureEnginesInitialized();
+
 console.log('✅ WashSafe App loaded');

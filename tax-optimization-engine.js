@@ -425,5 +425,25 @@ class TaxOptimizationEngine {
     }
 }
 
-// Initialize and export
-const taxOptimizationEngine = new TaxOptimizationEngine(window.washSaleEngine);
+// Initialize after washSaleEngine is available
+let taxOptimizationEngine;
+
+// Initialize when DOM is ready or washSaleEngine is available
+function initializeTaxOptimizationEngine() {
+    if (window.washSaleEngine && !window.taxOptimizationEngine) {
+        taxOptimizationEngine = new TaxOptimizationEngine(window.washSaleEngine);
+        window.taxOptimizationEngine = taxOptimizationEngine;
+        console.log('✅ Tax Optimization Engine initialized');
+    }
+}
+
+// Try to initialize immediately
+initializeTaxOptimizationEngine();
+
+// Also try when DOM loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTaxOptimizationEngine);
+} else {
+    // DOM already loaded, try again in next tick
+    setTimeout(initializeTaxOptimizationEngine, 100);
+}
