@@ -55,8 +55,21 @@ class WashSaleEngine {
         const sortedTransactions = [...this.transactions].sort((a, b) => {
             const dateDiff = new Date(a.date) - new Date(b.date);
             if (dateDiff !== 0) return dateDiff;
-            // If dates are equal, sort by transaction ID to ensure consistent ordering
-            return a.id.toString().localeCompare(b.id.toString());
+            
+            // For same-day transactions, prioritize buy before sell to avoid "no lots available"
+            if (a.type !== b.type) {
+                return a.type === 'buy' ? -1 : 1;
+            }
+            
+            // If same type and date, sort by numeric ID if possible, otherwise string comparison
+            const aId = isNaN(a.id) ? a.id : Number(a.id);
+            const bId = isNaN(b.id) ? b.id : Number(b.id);
+            
+            if (typeof aId === 'number' && typeof bId === 'number') {
+                return aId - bId;
+            } else {
+                return aId.toString().localeCompare(bId.toString());
+            }
         });
         
         console.log(`🔄 Rebuilding from ${sortedTransactions.length} transactions...`);
