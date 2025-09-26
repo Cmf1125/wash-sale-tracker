@@ -903,10 +903,14 @@ class WashSaleEngine {
         }
 
         this.stockSplits.push(split);
-        this.saveTransactions();
-
+        
+        // Immediately rebuild share lots to apply the new split
         console.log(`📊 Added stock split: ${symbol} ${ratio}:1 on ${split.splitDate.toDateString()}`);
-        console.log(`📊 Note: Split will be applied when share lots are rebuilt or calculated`);
+        console.log(`🔄 Rebuilding share lots to apply new split...`);
+        this.rebuildShareLotsFromTransactions();
+        
+        this.saveTransactions();
+        console.log(`✅ Split applied and share lots updated`);
         return true;
     }
 
