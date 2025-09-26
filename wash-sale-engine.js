@@ -954,13 +954,48 @@ class WashSaleEngine {
                 // Only consider transactions within reasonable timeframe (up to 60 days apart)
                 if (daysBetween > 60) continue;
                 
-                const ratio = prev.price / curr.price;
+                const priceRatio = prev.price / curr.price;
+                const reverseRatio = curr.price / prev.price;
                 
-                // Common split ratios: 2:1, 3:1, 4:1, 5:1, 7:1, 10:1, 20:1
-                const commonRatios = [2, 3, 4, 5, 7, 10, 20];
-                const matchedRatio = commonRatios.find(r => Math.abs(ratio - r) < 0.3);
+                let detectedSplit = null;
                 
-                if (matchedRatio && ratio > 1.8) { // Only consider significant price drops
+                // Check for regular stock splits (price drops)
+                const regularSplitRatios = [2, 3, 4, 5, 7, 10, 20, 25, 50];
+                for (const splitRatio of regularSplitRatios) {
+                    if (Math.abs(priceRatio - splitRatio) < 0.4) {
+                        const confidence = this.calculateSplitConfidence(priceRatio, splitRatio, daysBetween, 'regular');
+                        if (confidence >= 60) { // Only high-confidence detections
+                            detectedSplit = {
+                                type: 'regular',
+                                suggestedRatio: `${splitRatio}:1`,
+                                actualRatio: priceRatio,
+                                confidence: confidence
+                            };
+                            break;
+                        }
+                    }
+                }
+                
+                // Check for reverse splits (price increases)
+                if (!detectedSplit) {
+                    const reverseSplitRatios = [2, 3, 4, 5, 7, 10, 15, 20, 25, 40, 50, 100];
+                    for (const splitRatio of reverseSplitRatios) {
+                        if (Math.abs(reverseRatio - splitRatio) < 0.4) {
+                            const confidence = this.calculateSplitConfidence(reverseRatio, splitRatio, daysBetween, 'reverse');
+                            if (confidence >= 60) { // Only high-confidence detections
+                                detectedSplit = {
+                                    type: 'reverse',
+                                    suggestedRatio: `1:${splitRatio}`,
+                                    actualRatio: reverseRatio,
+                                    confidence: confidence
+                                };
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (detectedSplit) { // Enhanced split detection
                     // Check if we already have this split recorded
                     const existingSplit = this.stockSplits.find(s => 
                         s.symbol === sym && 
@@ -968,23 +1003,22 @@ class WashSaleEngine {
                     );
                     
                     if (!existingSplit) {
-                        const confidence = this.calculateSplitConfidence(ratio, matchedRatio, daysBetween);
-                        
                         alerts.push({
                             symbol: sym,
                             detectedDate: curr.date,
-                            suggestedRatio: matchedRatio,
+                            splitType: detectedSplit.type,
+                            suggestedRatio: detectedSplit.suggestedRatio,
                             priceFrom: prev.price,
                             priceTo: curr.price,
-                            actualRatio: ratio,
+                            actualRatio: detectedSplit.actualRatio,
                             daysBetween: Math.round(daysBetween),
-                            confidence: confidence,
+                            confidence: detectedSplit.confidence,
                             previousTransaction: prev,
                             currentTransaction: curr
                         });
                         
-                        console.log(`   🎯 Potential ${matchedRatio}:1 split detected for ${sym} around ${new Date(curr.date).toDateString()}`);
-                        console.log(`      Price drop: $${prev.price.toFixed(2)} → $${curr.price.toFixed(2)} (${ratio.toFixed(1)}x) - ${confidence}% confidence`);
+                        console.log(`   🎯 Potential ${detectedSplit.suggestedRatio} ${detectedSplit.type} split detected for ${sym} around ${new Date(curr.date).toDateString()}`);
+                        console.log(`      Price change: $${prev.price.toFixed(2)} → $${curr.price.toFixed(2)} (${detectedSplit.actualRatio.toFixed(1)}x) - ${detectedSplit.confidence}% confidence`);
                     }
                 }
             }
@@ -1180,21 +1214,41 @@ class WashSaleEngine {
     /**
      * Calculate confidence score for a detected split
      */
-    calculateSplitConfidence(actualRatio, suggestedRatio, daysBetween) {
+    calculateSplitConfidence(actualRatio, suggestedRatio, daysBetween, splitType = 'regular') {
         let confidence = 100;
         
         // Reduce confidence based on how far actual ratio is from suggested ratio
         const ratioError = Math.abs(actualRatio - suggestedRatio) / suggestedRatio;
-        confidence -= ratioError * 50; // Up to 50% penalty for ratio mismatch
+        confidence -= ratioError * 60; // Up to 60% penalty for ratio mismatch
         
         // Reduce confidence if transactions are too far apart
         if (daysBetween > 30) {
-            confidence -= (daysBetween - 30) * 2; // 2% penalty per day over 30 days
+            confidence -= (daysBetween - 30) * 1.5; // 1.5% penalty per day over 30 days
+        }
+        
+        // Very close transactions might not be splits, just market volatility
+        if (daysBetween < 1) {
+            confidence -= 40; // Same day transactions are suspicious
         }
         
         // Common split ratios get bonus confidence
-        if ([2, 3, 4, 5, 10].includes(suggestedRatio)) {
-            confidence += 10;
+        const commonRegularRatios = [2, 3, 4, 5, 10, 20];
+        const commonReverseRatios = [5, 10, 20, 25, 40, 50, 100];
+        
+        if (splitType === 'regular' && commonRegularRatios.includes(suggestedRatio)) {
+            confidence += 15;
+        } else if (splitType === 'reverse' && commonReverseRatios.includes(suggestedRatio)) {
+            confidence += 10; // Reverse splits are less common, smaller bonus
+        }
+        
+        // Price ratio must be significant enough to be a real split
+        if (actualRatio < 1.8) {
+            confidence -= 30; // Small price changes are probably not splits
+        }
+        
+        // Very large ratios (>100) are suspicious unless it's a known penny stock scenario
+        if (actualRatio > 100) {
+            confidence -= 20;
         }
         
         return Math.max(10, Math.min(100, Math.round(confidence)));

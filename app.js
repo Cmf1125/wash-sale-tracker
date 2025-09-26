@@ -2210,12 +2210,12 @@ function displaySplitDetectionResults(potentialSplits) {
                 </div>
                 <div class="ml-3 flex-1">
                     <h4 class="text-yellow-800 font-medium">
-                        Potential Stock Split Detected: ${split.symbol}
+                        Potential ${split.splitType === 'reverse' ? 'Reverse' : 'Regular'} Split: ${split.symbol}
                     </h4>
                     <div class="mt-2 text-yellow-700 text-sm">
                         <p><strong>Detection Date:</strong> ${new Date(split.detectedDate).toLocaleDateString()}</p>
-                        <p><strong>Price Change:</strong> $${split.priceFrom.toFixed(2)} → $${split.priceTo.toFixed(2)} (${split.actualRatio.toFixed(1)}x drop)</p>
-                        <p><strong>Suggested Split Ratio:</strong> ${split.suggestedRatio}:1</p>
+                        <p><strong>Price Change:</strong> $${split.priceFrom.toFixed(2)} → $${split.priceTo.toFixed(2)} (${split.actualRatio.toFixed(1)}x ${split.splitType === 'reverse' ? 'increase' : 'drop'})</p>
+                        <p><strong>Suggested Split Ratio:</strong> ${split.suggestedRatio}</p>
                         <p><strong>Confidence:</strong> 
                             <span class="px-2 py-1 rounded text-xs ${
                                 split.confidence === 'HIGH' ? 'bg-red-100 text-red-800' :
