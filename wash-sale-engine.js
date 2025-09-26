@@ -342,14 +342,26 @@ class WashSaleEngine {
      * Create a new share lot from a buy transaction
      */
     createShareLot(buyTransaction) {
+        // Apply split adjustments when creating lots
+        const adjustments = this.calculateSplitAdjustments(buyTransaction.symbol, new Date(buyTransaction.date));
+        
+        const adjustedQuantity = buyTransaction.quantity * adjustments.totalRatio;
+        const adjustedPrice = buyTransaction.price / adjustments.totalRatio;
+        
+        console.log(`   Creating lot for ${buyTransaction.symbol}: ${buyTransaction.quantity} → ${adjustedQuantity} shares, $${buyTransaction.price} → $${adjustedPrice.toFixed(4)} (split ratio: ${adjustments.totalRatio})`);
+        
         return {
-            id: `lot_${buyTransaction.id}`,
+            id: `lot_${buyTransaction.id}_${Date.now()}`,
             symbol: buyTransaction.symbol,
             purchaseDate: new Date(buyTransaction.date),
-            originalQuantity: buyTransaction.quantity,
-            remainingQuantity: buyTransaction.quantity,
-            costPerShare: buyTransaction.price,
-            purchaseTransactionId: buyTransaction.id
+            originalQuantity: adjustedQuantity,
+            remainingQuantity: adjustedQuantity,
+            costPerShare: adjustedPrice,
+            purchaseTransactionId: buyTransaction.id,
+            originalTransactionQuantity: buyTransaction.quantity,
+            originalTransactionPrice: buyTransaction.price,
+            splitAdjustmentRatio: adjustments.totalRatio,
+            appliedSplits: adjustments.appliedSplits.map(s => s.id)
         };
     }
 
@@ -884,11 +896,10 @@ class WashSaleEngine {
         }
 
         this.stockSplits.push(split);
-        
-        // Apply the split to existing lots and transactions
-        this.applyStockSplitsToLots();
+        this.saveTransactions();
 
         console.log(`📊 Added stock split: ${symbol} ${ratio}:1 on ${split.splitDate.toDateString()}`);
+        console.log(`📊 Note: Split will be applied when share lots are rebuilt or calculated`);
         return true;
     }
 
@@ -905,18 +916,40 @@ class WashSaleEngine {
     }
 
     /**
-     * Get transaction display info (splits are now applied to underlying data)
+     * Get split-adjusted values for a transaction (for display and calculations)
+     * This does NOT modify the original transaction data
      */
     getAdjustedTransactionDisplay(transaction) {
-        // Since splits are now applied to the underlying data, just return the transaction values
-        // But indicate if this transaction has been affected by splits
-        const hasAppliedSplits = transaction.appliedSplits && transaction.appliedSplits.length > 0;
+        const adjustments = this.calculateSplitAdjustments(transaction.symbol, new Date(transaction.date));
         
         return {
-            price: transaction.price,
-            quantity: transaction.quantity,
-            isAdjusted: hasAppliedSplits,
-            splitInfo: hasAppliedSplits ? transaction.appliedSplits : null
+            price: transaction.price / adjustments.totalRatio,
+            quantity: transaction.quantity * adjustments.totalRatio,
+            isAdjusted: adjustments.appliedSplits.length > 0,
+            splitInfo: adjustments.appliedSplits
+        };
+    }
+
+    /**
+     * Calculate cumulative split adjustments for a symbol up to a given date
+     * Returns the total ratio to apply and which splits were considered
+     */
+    calculateSplitAdjustments(symbol, asOfDate) {
+        const splits = this.stockSplits
+            .filter(s => s.symbol === symbol && new Date(s.splitDate) > asOfDate)
+            .sort((a, b) => new Date(a.splitDate) - new Date(b.splitDate));
+        
+        let totalRatio = 1;
+        const appliedSplits = [];
+        
+        for (const split of splits) {
+            totalRatio *= split.ratio;
+            appliedSplits.push(split);
+        }
+        
+        return {
+            totalRatio,
+            appliedSplits
         };
     }
 
