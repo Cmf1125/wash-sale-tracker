@@ -1316,13 +1316,13 @@ class WashSaleEngine {
             
             for (const split of splits) {
                 const splitDate = new Date(split.splitDate);
-                const isAfterLot = splitDate > lotDate;
+                const lotBeforeSplit = lotDate < splitDate;
                 const alreadyApplied = lot.appliedSplits?.includes(split.id);
                 
-                console.log(`   → Split ${split.id} (${split.ratio}:1 on ${splitDate.toDateString()}): isAfterLot=${isAfterLot}, alreadyApplied=${alreadyApplied}`);
+                console.log(`   → Split ${split.id} (${split.ratio}:1 on ${splitDate.toDateString()}): lotBeforeSplit=${lotBeforeSplit}, alreadyApplied=${alreadyApplied}`);
                 
-                // Only apply splits that occurred AFTER the lot was created
-                if (isAfterLot && !alreadyApplied) {
+                // Only apply splits to lots that were created BEFORE the split date
+                if (lotBeforeSplit && !alreadyApplied) {
                     console.log(`   → ✅ Applying ${split.ratio}:1 split to lot ${lot.id} (${lot.symbol})`);
                     console.log(`   → BEFORE: ${lot.remainingQuantity} shares @ $${lot.costPerShare.toFixed(2)}`);
                     
