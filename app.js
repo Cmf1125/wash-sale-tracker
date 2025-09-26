@@ -232,6 +232,10 @@ class WashSafeApp {
             this.setupHistoryFilterListeners(); // Set up filter listeners when tab is shown
         } else if (tabName === 'alerts') {
             this.updateTaxAlerts();
+        } else if (tabName === 'optimization') {
+            this.updateTaxOptimizationTab();
+        } else if (tabName === 'alternatives') {
+            this.setupAlternativesTab();
         } else if (tabName === 'help') {
             // Help tab is static HTML, no updates needed
         }
@@ -1087,6 +1091,233 @@ class WashSafeApp {
             </div>
         `).join('');
     }
+
+    /**
+     * Update Tax Optimization Tab
+     */
+    async updateTaxOptimizationTab() {
+        const portfolio = window.washSaleEngine.getPortfolio();
+        const portfolioPositions = Object.values(portfolio);
+        
+        if (portfolioPositions.length === 0) {
+            document.getElementById('optimization-portfolio-value').textContent = '$0';
+            document.getElementById('optimization-harvestable-losses').textContent = '$0';
+            document.getElementById('optimization-tax-savings').textContent = '$0';
+            document.getElementById('optimization-opportunities').textContent = '0';
+            return;
+        }
+
+        // Get current prices and calculate position values
+        const symbols = Object.keys(portfolio);
+        try {
+            const prices = await window.stockPriceService.getBatchPrices(symbols);
+            
+            let totalValue = 0;
+            let totalHarvestableLosses = 0;
+            let opportunities = 0;
+            
+            // Convert portfolio to format expected by tax engine
+            const positions = portfolioPositions.map(position => {
+                const priceData = prices[position.symbol];
+                const currentPrice = (priceData && priceData.price > 0) ? priceData.price : position.averageCost;
+                const currentValue = position.shares * currentPrice;
+                const unrealizedGainLoss = (currentPrice - position.averageCost) * position.shares;
+                
+                totalValue += currentValue;
+                
+                if (unrealizedGainLoss < -100) { // Only count significant losses
+                    totalHarvestableLosses += Math.abs(unrealizedGainLoss);
+                    opportunities++;
+                }
+                
+                return {
+                    symbol: position.symbol,
+                    shares: position.shares,
+                    averageCost: position.averageCost,
+                    currentPrice: currentPrice,
+                    currentValue: currentValue,
+                    unrealizedGainLoss: unrealizedGainLoss,
+                    purchaseDate: position.purchaseDate || new Date() // fallback
+                };
+            });
+            
+            // Update dashboard metrics
+            document.getElementById('optimization-portfolio-value').textContent = `$${totalValue.toFixed(0)}`;
+            document.getElementById('optimization-harvestable-losses').textContent = `$${totalHarvestableLosses.toFixed(0)}`;
+            document.getElementById('optimization-tax-savings').textContent = `$${(totalHarvestableLosses * 0.24).toFixed(0)}`;
+            document.getElementById('optimization-opportunities').textContent = opportunities.toString();
+            
+        } catch (error) {
+            console.error('Failed to update tax optimization tab:', error);
+        }
+    }
+
+    /**
+     * Setup Stock Alternatives Tab
+     */
+    setupAlternativesTab() {
+        const form = document.getElementById('alternatives-form');
+        if (form && !form.hasEventListener) {
+            form.addEventListener('submit', this.handleAlternativesFormSubmit.bind(this));
+            form.hasEventListener = true;
+        }
+    }
+
+    /**
+     * Handle alternatives form submission
+     */
+    async handleAlternativesFormSubmit(e) {
+        e.preventDefault();
+        
+        const symbol = document.getElementById('alternatives-symbol').value.toUpperCase().trim();
+        const quantity = parseInt(document.getElementById('alternatives-quantity').value);
+        const expectedLoss = parseFloat(document.getElementById('alternatives-loss').value) || 0;
+        
+        if (!symbol) {
+            alert('Please enter a stock symbol');
+            return;
+        }
+        
+        if (!quantity || quantity <= 0) {
+            alert('Please enter a valid quantity');
+            return;
+        }
+        
+        try {
+            // Show loading state
+            document.getElementById('alternatives-results').classList.remove('hidden');
+            document.getElementById('alternatives-list').innerHTML = `
+                <div class="text-center py-8">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p class="text-gray-600">Finding alternatives for ${symbol}...</p>
+                </div>
+            `;
+            
+            // Get similar stocks
+            const suggestions = await window.similarStocksEngine.getWashSalePreventionSuggestions(
+                symbol, 
+                quantity, 
+                expectedLoss
+            );
+            
+            this.displayAlternativeResults(suggestions);
+            
+        } catch (error) {
+            console.error('Error finding alternatives:', error);
+            document.getElementById('alternatives-list').innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    <p>Error finding alternatives. Please try again.</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Display alternative stock recommendations
+     */
+    displayAlternativeResults(suggestions) {
+        const { originalStock, alternatives, strategy } = suggestions;
+        
+        if (!alternatives || alternatives.length === 0) {
+            document.getElementById('alternatives-list').innerHTML = `
+                <div class="text-center py-8 text-gray-600">
+                    <div class="text-4xl mb-4">🔍</div>
+                    <p>No suitable alternatives found for ${originalStock.symbol}</p>
+                    <p class="text-sm mt-2">Consider waiting 31 days before repurchasing to avoid wash sale rules.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const resultsHtml = `
+            <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                <h4 class="font-semibold text-blue-900 mb-2">Original Position</h4>
+                <p class="text-blue-800">
+                    ${originalStock.symbol} - ${originalStock.quantity} shares
+                    ${originalStock.expectedLoss > 0 ? ` (Expected Loss: $${originalStock.expectedLoss.toFixed(2)})` : ''}
+                </p>
+                <p class="text-sm text-blue-700 mt-1">
+                    Sector: ${originalStock.sector} | Industry: ${originalStock.industry}
+                </p>
+            </div>
+            
+            <div class="mb-6">
+                <h4 class="font-semibold mb-3">🎯 Recommended Strategy</h4>
+                <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <p class="font-medium text-green-900">${strategy.recommendation}</p>
+                    <p class="text-green-800 text-sm mt-2">${strategy.reasoning}</p>
+                    <div class="flex items-center justify-between mt-3">
+                        <span class="text-xs text-green-700">Timeline: ${strategy.timeline}</span>
+                        <span class="px-2 py-1 text-xs rounded ${
+                            strategy.riskLevel === 'Low' ? 'bg-green-100 text-green-800' :
+                            strategy.riskLevel === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                        }">
+                            ${strategy.riskLevel} Risk
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="space-y-4">
+                <h4 class="font-semibold">🔍 Alternative Options</h4>
+                ${alternatives.map((alt, index) => `
+                    <div class="border border-gray-200 rounded-lg p-4 ${index === 0 ? 'border-blue-300 bg-blue-50' : ''}">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <div class="flex items-center">
+                                    <span class="font-semibold text-lg mr-2">${alt.symbol}</span>
+                                    ${index === 0 ? '<span class="px-2 py-1 text-xs bg-blue-600 text-white rounded">RECOMMENDED</span>' : ''}
+                                </div>
+                                <p class="text-sm text-gray-600">${alt.sector} - ${alt.industry}</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-semibold ${alt.confidence > 0.8 ? 'text-green-600' : alt.confidence > 0.6 ? 'text-yellow-600' : 'text-red-600'}">
+                                    ${Math.round(alt.confidence * 100)}%
+                                </div>
+                                <div class="text-xs text-gray-500">Confidence</div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4 mb-3">
+                            <div>
+                                <div class="text-xs text-gray-500">Wash Sale Safety</div>
+                                <div class="flex items-center">
+                                    <div class="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                                        <div class="bg-green-500 h-2 rounded-full" style="width: ${alt.washSafeScore * 100}%"></div>
+                                    </div>
+                                    <span class="text-xs">${Math.round(alt.washSafeScore * 100)}%</span>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500">Risk Score</div>
+                                <div class="flex items-center">
+                                    <div class="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                                        <div class="bg-red-500 h-2 rounded-full" style="width: ${alt.riskScore * 100}%"></div>
+                                    </div>
+                                    <span class="text-xs">${Math.round(alt.riskScore * 100)}%</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t pt-3">
+                            <p class="text-sm text-gray-700 mb-2"><strong>Reason:</strong> ${alt.reason}</p>
+                            <p class="text-sm text-blue-700"><strong>Action:</strong> ${alt.recommendedAction}</p>
+                            ${alt.taxImplication ? `
+                                <div class="mt-2 text-xs text-gray-600">
+                                    <span class="font-medium">Tax Impact:</span> 
+                                    $${alt.taxImplication.potentialTaxSavings.toFixed(2)} potential savings 
+                                    (${Math.round(alt.taxImplication.confidence * 100)}% confidence)
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        document.getElementById('alternatives-list').innerHTML = resultsHtml;
+    }
 }
 
 /**
@@ -1716,5 +1947,197 @@ document.addEventListener('DOMContentLoaded', () => {
         splitForm.addEventListener('submit', handleSplitFormSubmit);
     }
 });
+
+/**
+ * Global function for tax optimization analysis
+ */
+async function runTaxOptimizationAnalysis() {
+    const portfolio = window.washSaleEngine.getPortfolio();
+    const portfolioPositions = Object.values(portfolio);
+    
+    if (portfolioPositions.length === 0) {
+        alert('No portfolio positions found. Add some trades to see optimization recommendations.');
+        return;
+    }
+    
+    try {
+        // Show loading state
+        document.getElementById('optimization-recommendations').innerHTML = `
+            <div class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-gray-600">Analyzing your portfolio...</p>
+            </div>
+        `;
+        
+        // Get current prices for portfolio analysis
+        const symbols = Object.keys(portfolio);
+        const prices = await window.stockPriceService.getBatchPrices(symbols);
+        
+        // Convert portfolio to format expected by tax engine
+        const positions = portfolioPositions.map(position => {
+            const priceData = prices[position.symbol];
+            const currentPrice = (priceData && priceData.price > 0) ? priceData.price : position.averageCost;
+            const currentValue = position.shares * currentPrice;
+            const unrealizedGainLoss = (currentPrice - position.averageCost) * position.shares;
+            
+            return {
+                symbol: position.symbol,
+                shares: position.shares,
+                averageCost: position.averageCost,
+                currentPrice: currentPrice,
+                currentValue: currentValue,
+                unrealizedGainLoss: unrealizedGainLoss,
+                purchaseDate: position.purchaseDate || new Date()
+            };
+        });
+        
+        // Run tax optimization analysis
+        const analysis = await window.taxOptimizationEngine.analyzePortfolioOptimization(positions);
+        
+        // Update recommendations section
+        displayTaxOptimizationResults(analysis);
+        
+        // Update loss harvesting table
+        updateLossHarvestingTable(analysis.opportunities);
+        
+    } catch (error) {
+        console.error('Error running tax optimization analysis:', error);
+        document.getElementById('optimization-recommendations').innerHTML = `
+            <div class="text-center py-8 text-red-600">
+                <p>Error running analysis. Please try again.</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Display tax optimization analysis results
+ */
+function displayTaxOptimizationResults(analysis) {
+    const { summary, recommendations, taxProjections } = analysis;
+    
+    let recommendationsHtml = '';
+    
+    if (recommendations.length === 0) {
+        recommendationsHtml = `
+            <div class="text-center py-8 text-gray-600">
+                <div class="text-4xl mb-4">✅</div>
+                <p>No immediate optimization opportunities found.</p>
+                <p class="text-sm mt-2">Your portfolio appears to be well-positioned from a tax perspective.</p>
+            </div>
+        `;
+    } else {
+        recommendationsHtml = `
+            <div class="space-y-4">
+                ${recommendations.map(rec => `
+                    <div class="border rounded-lg p-4 ${
+                        rec.priority === 'HIGH' ? 'border-red-300 bg-red-50' :
+                        rec.priority === 'MEDIUM' ? 'border-yellow-300 bg-yellow-50' :
+                        'border-blue-300 bg-blue-50'
+                    }">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <h5 class="font-semibold ${
+                                    rec.priority === 'HIGH' ? 'text-red-900' :
+                                    rec.priority === 'MEDIUM' ? 'text-yellow-900' :
+                                    'text-blue-900'
+                                }">${rec.action}</h5>
+                                <p class="text-sm text-gray-600 mt-1">${rec.category}</p>
+                            </div>
+                            <span class="px-2 py-1 text-xs rounded ${
+                                rec.priority === 'HIGH' ? 'bg-red-200 text-red-800' :
+                                rec.priority === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
+                                'bg-blue-200 text-blue-800'
+                            }">
+                                ${rec.priority}
+                            </span>
+                        </div>
+                        <p class="text-sm mb-2"><strong>Benefit:</strong> ${rec.benefit}</p>
+                        ${rec.deadline ? `<p class="text-xs text-gray-600"><strong>Deadline:</strong> ${rec.deadline}</p>` : ''}
+                        ${rec.strategy && rec.strategy.steps ? `
+                            <div class="mt-3 text-sm">
+                                <strong>Steps:</strong>
+                                <ol class="list-decimal list-inside ml-4 mt-1">
+                                    ${rec.strategy.steps.map(step => `<li>${step}</li>`).join('')}
+                                </ol>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('')}
+            </div>
+            
+            ${taxProjections ? `
+                <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+                    <h5 class="font-semibold mb-3">📊 Tax Impact Summary</h5>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <div class="text-gray-600">Current Tax Liability</div>
+                            <div class="font-semibold">$${taxProjections.currentTaxLiability.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-600">Optimized Tax Liability</div>
+                            <div class="font-semibold text-green-600">$${taxProjections.optimizedTaxLiability.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-600">Potential Tax Savings</div>
+                            <div class="font-semibold text-green-600">$${taxProjections.potentialTaxSavings.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-600">Loss Carryforward</div>
+                            <div class="font-semibold">$${taxProjections.carryforwardOpportunity.toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+        `;
+    }
+    
+    document.getElementById('optimization-recommendations').innerHTML = recommendationsHtml;
+}
+
+/**
+ * Update loss harvesting opportunities table
+ */
+function updateLossHarvestingTable(opportunities) {
+    const tableBody = document.getElementById('harvesting-opportunities-table');
+    
+    if (opportunities.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                    No loss harvesting opportunities identified.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tableBody.innerHTML = opportunities.map(opp => `
+        <tr>
+            <td class="px-6 py-4 font-medium">${opp.symbol}</td>
+            <td class="px-6 py-4 text-red-600">-$${opp.unrealizedLoss.toFixed(2)}</td>
+            <td class="px-6 py-4 text-green-600">$${opp.potentialTaxBenefit.toFixed(2)}</td>
+            <td class="px-6 py-4">
+                <span class="px-2 py-1 text-xs rounded ${opp.isShortTerm ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}">
+                    ${opp.isShortTerm ? 'Short-term' : 'Long-term'}
+                </span>
+                <div class="text-xs text-gray-500 mt-1">${opp.holdingPeriod} days</div>
+            </td>
+            <td class="px-6 py-4">
+                <div class="text-sm">${opp.strategy.action.replace(/_/g, ' ')}</div>
+                <div class="text-xs text-gray-500 mt-1">${opp.strategy.timeline}</div>
+            </td>
+            <td class="px-6 py-4">
+                <span class="px-2 py-1 text-xs rounded ${
+                    opp.urgency === 'HIGH' ? 'bg-red-100 text-red-800' :
+                    opp.urgency === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                }">
+                    ${opp.urgency}
+                </span>
+            </td>
+        </tr>
+    `).join('');
+}
 
 console.log('✅ WashSafe App loaded');
