@@ -2213,9 +2213,9 @@ function displaySplitDetectionResults(potentialSplits) {
                         Potential Stock Split Detected: ${split.symbol}
                     </h4>
                     <div class="mt-2 text-yellow-700 text-sm">
-                        <p><strong>Date Range:</strong> ${new Date(split.beforeDate).toLocaleDateString()} to ${new Date(split.afterDate).toLocaleDateString()}</p>
-                        <p><strong>Price Change:</strong> $${split.beforePrice.toFixed(2)} → $${split.afterPrice.toFixed(2)} (${(split.priceRatio * 100).toFixed(1)}% drop)</p>
-                        <p><strong>Suggested Split Ratio:</strong> ${split.suggestedRatio}</p>
+                        <p><strong>Detection Date:</strong> ${new Date(split.detectedDate).toLocaleDateString()}</p>
+                        <p><strong>Price Change:</strong> $${split.priceFrom.toFixed(2)} → $${split.priceTo.toFixed(2)} (${split.actualRatio.toFixed(1)}x drop)</p>
+                        <p><strong>Suggested Split Ratio:</strong> ${split.suggestedRatio}:1</p>
                         <p><strong>Confidence:</strong> 
                             <span class="px-2 py-1 rounded text-xs ${
                                 split.confidence === 'HIGH' ? 'bg-red-100 text-red-800' :
@@ -2228,7 +2228,7 @@ function displaySplitDetectionResults(potentialSplits) {
                     </div>
                     <div class="mt-3 flex flex-wrap gap-2">
                         <button 
-                            onclick="confirmSplit('${split.symbol}', '${split.afterDate}', '${split.suggestedRatio}', ${index})"
+                            onclick="confirmSplit('${split.symbol}', '${split.detectedDate}', '${split.suggestedRatio}', ${index})"
                             class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                         >
                             Add Split Record
@@ -2240,7 +2240,7 @@ function displaySplitDetectionResults(potentialSplits) {
                             Dismiss
                         </button>
                         <button 
-                            onclick="viewSplitDetails('${split.symbol}', '${split.beforeDate}', '${split.afterDate}')"
+                            onclick="viewSplitDetails('${split.symbol}', '${split.detectedDate}')"
                             class="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded hover:bg-gray-200 transition-colors"
                         >
                             View Details
@@ -2345,17 +2345,13 @@ function dismissSplitAlert(alertIndex) {
 /**
  * View detailed information about a potential split
  */
-function viewSplitDetails(symbol, beforeDate, afterDate) {
+function viewSplitDetails(symbol, detectedDate) {
     const transactions = window.washSaleEngine.transactions
         .filter(t => t.symbol === symbol)
-        .filter(t => {
-            const transDate = new Date(t.date);
-            return transDate >= new Date(beforeDate) && transDate <= new Date(afterDate);
-        })
         .sort((a, b) => new Date(a.date) - new Date(b.date));
     
     if (transactions.length === 0) {
-        alert('No transactions found in the specified date range.');
+        alert('No transactions found for this symbol.');
         return;
     }
     
@@ -2365,7 +2361,7 @@ function viewSplitDetails(symbol, beforeDate, afterDate) {
     
     alert(
         `Transaction Details for ${symbol}\n` +
-        `Date Range: ${new Date(beforeDate).toLocaleDateString()} - ${new Date(afterDate).toLocaleDateString()}\n\n` +
+        `Split detected around: ${new Date(detectedDate).toLocaleDateString()}\n\n` +
         detailsHtml
     );
 }
