@@ -796,6 +796,14 @@ class WashSaleEngine {
     }
 
     /**
+     * Get year-to-date realized gains for tax optimization
+     */
+    getYearToDateRealizedGains() {
+        const ytdStats = this.getYTDStats();
+        return ytdStats.totalGains - ytdStats.totalLosses; // Net realized gains/losses
+    }
+
+    /**
      * Export data for tax purposes
      */
     exportTransactions() {
