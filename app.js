@@ -1100,9 +1100,9 @@ class WashSafeApp {
         const portfolioPositions = Object.values(portfolio);
         
         if (portfolioPositions.length === 0) {
-            document.getElementById('optimization-portfolio-value').textContent = '$0';
-            document.getElementById('optimization-harvestable-losses').textContent = '$0';
-            document.getElementById('optimization-tax-savings').textContent = '$0';
+            document.getElementById('optimization-portfolio-value').textContent = formatCurrency(0);
+            document.getElementById('optimization-harvestable-losses').textContent = formatCurrency(0);
+            document.getElementById('optimization-tax-savings').textContent = formatCurrency(0);
             document.getElementById('optimization-opportunities').textContent = '0';
             return;
         }
@@ -1142,9 +1142,9 @@ class WashSafeApp {
             });
             
             // Update dashboard metrics
-            document.getElementById('optimization-portfolio-value').textContent = `$${totalValue.toFixed(0)}`;
-            document.getElementById('optimization-harvestable-losses').textContent = `$${totalHarvestableLosses.toFixed(0)}`;
-            document.getElementById('optimization-tax-savings').textContent = `$${(totalHarvestableLosses * 0.24).toFixed(0)}`;
+            document.getElementById('optimization-portfolio-value').textContent = formatCurrency(totalValue);
+            document.getElementById('optimization-harvestable-losses').textContent = formatCurrency(totalHarvestableLosses);
+            document.getElementById('optimization-tax-savings').textContent = formatCurrency(totalHarvestableLosses * 0.24);
             document.getElementById('optimization-opportunities').textContent = opportunities.toString();
             
         } catch (error) {
@@ -1972,6 +1972,31 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
+ * Format currency with proper comma separators
+ */
+function formatCurrency(amount, includeSign = false) {
+    if (amount === undefined || amount === null || isNaN(amount)) {
+        return '$0';
+    }
+    
+    const absAmount = Math.abs(amount);
+    const formatted = absAmount.toLocaleString('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+    
+    if (includeSign && amount !== 0) {
+        return amount >= 0 ? `+${formatted}` : `-${formatted}`;
+    } else if (amount < 0) {
+        return `-${formatted}`;
+    }
+    
+    return formatted;
+}
+
+/**
  * Global function for tax optimization analysis
  */
 async function runTaxOptimizationAnalysis() {
@@ -2095,19 +2120,19 @@ function displayTaxOptimizationResults(analysis) {
                     <div class="grid grid-cols-2 gap-4 text-sm">
                         <div>
                             <div class="text-gray-600">Current Tax Liability</div>
-                            <div class="font-semibold">$${taxProjections.currentTaxLiability.toFixed(2)}</div>
+                            <div class="font-semibold">${formatCurrency(taxProjections.currentTaxLiability)}</div>
                         </div>
                         <div>
                             <div class="text-gray-600">Optimized Tax Liability</div>
-                            <div class="font-semibold text-green-600">$${taxProjections.optimizedTaxLiability.toFixed(2)}</div>
+                            <div class="font-semibold text-green-600">${formatCurrency(taxProjections.optimizedTaxLiability)}</div>
                         </div>
                         <div>
                             <div class="text-gray-600">Potential Tax Savings</div>
-                            <div class="font-semibold text-green-600">$${taxProjections.potentialTaxSavings.toFixed(2)}</div>
+                            <div class="font-semibold text-green-600">${formatCurrency(taxProjections.potentialTaxSavings)}</div>
                         </div>
                         <div>
                             <div class="text-gray-600">Loss Carryforward</div>
-                            <div class="font-semibold">$${taxProjections.carryforwardOpportunity.toFixed(2)}</div>
+                            <div class="font-semibold">${formatCurrency(taxProjections.carryforwardOpportunity)}</div>
                         </div>
                     </div>
                 </div>
@@ -2130,12 +2155,12 @@ function updateYTDTaxSummary() {
         console.log('YTD Stats:', ytdStats);
         
         // Update current year stats
-        document.getElementById('ytd-realized-gains').textContent = `$${ytdStats.totalGains.toLocaleString()}`;
-        document.getElementById('ytd-realized-losses').textContent = `$${ytdStats.totalLosses.toLocaleString()}`;
-        document.getElementById('ytd-net-pnl').textContent = `$${ytdStats.netPnL.toLocaleString()}`;
+        document.getElementById('ytd-realized-gains').textContent = formatCurrency(ytdStats.totalGains);
+        document.getElementById('ytd-realized-losses').textContent = formatCurrency(ytdStats.totalLosses);
+        document.getElementById('ytd-net-pnl').textContent = formatCurrency(ytdStats.netPnL);
         
         // Use wash sale losses from YTD stats
-        document.getElementById('ytd-wash-sale-losses').textContent = `$${ytdStats.totalWashSaleLosses.toLocaleString()}`;
+        document.getElementById('ytd-wash-sale-losses').textContent = formatCurrency(ytdStats.totalWashSaleLosses);
         
         // Calculate tax loss carryforward
         calculateTaxLossCarryforward(ytdStats);
@@ -2187,8 +2212,8 @@ function calculateTaxLossCarryforward(ytdStats) {
     const newCarryforward = Math.max(0, totalLossesAvailable - annualLimit);
     
     // Update display
-    document.getElementById('available-deduction').textContent = `$${availableDeduction.toLocaleString()}`;
-    document.getElementById('new-carryforward').textContent = `$${newCarryforward.toLocaleString()}`;
+    document.getElementById('available-deduction').textContent = formatCurrency(availableDeduction);
+    document.getElementById('new-carryforward').textContent = formatCurrency(newCarryforward);
     
     // Calculate tax impact (assuming 24% tax rate)
     const taxRate = 0.24;
@@ -2204,7 +2229,7 @@ function calculateTaxLossCarryforward(ytdStats) {
     }
     
     const taxImpactElement = document.getElementById('tax-impact');
-    taxImpactElement.textContent = `${taxImpact >= 0 ? '+' : ''}$${taxImpact.toLocaleString()}`;
+    taxImpactElement.textContent = formatCurrency(taxImpact, true); // Include sign
     taxImpactElement.className = taxImpact >= 0 ? 'text-xl font-bold text-green-600' : 'text-xl font-bold text-red-600';
 }
 
@@ -2248,8 +2273,8 @@ function updateLossHarvestingTable(opportunities) {
     tableBody.innerHTML = opportunities.map(opp => `
         <tr>
             <td class="px-6 py-4 font-medium">${opp.symbol}</td>
-            <td class="px-6 py-4 text-red-600">-$${opp.unrealizedLoss.toFixed(2)}</td>
-            <td class="px-6 py-4 text-green-600">$${opp.potentialTaxBenefit.toFixed(2)}</td>
+            <td class="px-6 py-4 text-red-600">-${formatCurrency(opp.unrealizedLoss)}</td>
+            <td class="px-6 py-4 text-green-600">${formatCurrency(opp.potentialTaxBenefit)}</td>
             <td class="px-6 py-4">
                 <span class="px-2 py-1 text-xs rounded ${opp.isShortTerm ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}">
                     ${opp.isShortTerm ? 'Short-term' : 'Long-term'}

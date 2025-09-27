@@ -380,32 +380,6 @@
         <!-- Tax Optimization Tab -->
         <div id="optimization-tab" class="tab-content hidden">
             <div class="space-y-6">
-                <!-- Portfolio Overview -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <h2 class="text-xl font-bold mb-4">📊 Tax Optimization Dashboard</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-blue-50 p-4 rounded-lg">
-                            <div class="text-blue-600 text-sm font-medium">Portfolio Value</div>
-                            <div id="optimization-portfolio-value" class="text-2xl font-bold text-blue-900">$0</div>
-                        </div>
-                        <div class="bg-green-50 p-4 rounded-lg">
-                            <div class="text-green-600 text-sm font-medium">Harvestable Losses</div>
-                            <div id="optimization-harvestable-losses" class="text-2xl font-bold text-green-900">$0</div>
-                        </div>
-                        <div class="bg-orange-50 p-4 rounded-lg">
-                            <div class="text-orange-600 text-sm font-medium">Potential Tax Savings</div>
-                            <div id="optimization-tax-savings" class="text-2xl font-bold text-orange-900">$0</div>
-                        </div>
-                        <div class="bg-purple-50 p-4 rounded-lg">
-                            <div class="text-purple-600 text-sm font-medium">Opportunities</div>
-                            <div id="optimization-opportunities" class="text-2xl font-bold text-purple-900">0</div>
-                        </div>
-                    </div>
-                    <button onclick="runTaxOptimizationAnalysis()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">
-                        Run Analysis
-                    </button>
-                </div>
-
                 <!-- YTD Tax Summary -->
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-xl font-bold mb-4">📋 Year-to-Date Tax Summary</h2>
@@ -473,6 +447,32 @@
 
                     <button onclick="updateYTDTaxSummary()" class="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-medium">
                         Update Tax Summary
+                    </button>
+                </div>
+
+                <!-- Portfolio Overview -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-bold mb-4">📊 Tax Optimization Dashboard</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <div class="text-blue-600 text-sm font-medium">Portfolio Value</div>
+                            <div id="optimization-portfolio-value" class="text-2xl font-bold text-blue-900">$0</div>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <div class="text-green-600 text-sm font-medium">Harvestable Losses</div>
+                            <div id="optimization-harvestable-losses" class="text-2xl font-bold text-green-900">$0</div>
+                        </div>
+                        <div class="bg-orange-50 p-4 rounded-lg">
+                            <div class="text-orange-600 text-sm font-medium">Potential Tax Savings</div>
+                            <div id="optimization-tax-savings" class="text-2xl font-bold text-orange-900">$0</div>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-lg">
+                            <div class="text-purple-600 text-sm font-medium">Opportunities</div>
+                            <div id="optimization-opportunities" class="text-2xl font-bold text-purple-900">0</div>
+                        </div>
+                    </div>
+                    <button onclick="runTaxOptimizationAnalysis()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">
+                        Run Analysis
                     </button>
                 </div>
 
